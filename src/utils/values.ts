@@ -150,12 +150,16 @@ const models: Model[] = [
   { name: 'gemini-1.5-flash', inputTypes: InputTypes.commonVision },
   { name: 'gemini-2.0-flash-exp', inputTypes: InputTypes.gemini2 },
   { name: 'gemini-2.0-flash-thinking-exp', inputTypes: InputTypes.commonVision },
-  { name: 'deepseek-chat', inputTypes: InputTypes.textOnly }
+  { name: 'deepseek-chat', inputTypes: InputTypes.textOnly },
+  { name: 'deepseek-reasoner', inputTypes: InputTypes.textOnly }
 ]
 const modelOptions = models.map(m => m.name)
 const dialogOptions = {
   color: 'primary'
 }
+
+const mdPreviewThemes = ['default', 'vuepress', 'github', 'mk-cute', 'smart-blue', 'cyanosis', 'arknights']
+const mdCodeThemes = ['atom', 'ally', 'github', 'gradient', 'kimbie', 'paraiso', 'qtcreator', 'stackoverflow']
 
 const codeExtensions = [
   'abap',
@@ -1710,4 +1714,14 @@ const materialSymbols = [
   'chalet'
 ]
 
-export { ProviderTypes, models, InputTypes, modelOptions, dialogOptions, codeExtensions, materialSymbols }
+export {
+  ProviderTypes,
+  models,
+  InputTypes,
+  modelOptions,
+  dialogOptions,
+  codeExtensions,
+  materialSymbols,
+  mdPreviewThemes,
+  mdCodeThemes
+}

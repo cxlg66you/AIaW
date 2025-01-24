@@ -19,7 +19,7 @@
   <q-page-container>
     <q-page :style-fn="pageFhStyle">
       <q-list
-        pb-2
+        pb-4
         max-w="1000px"
         mx-a
       >
@@ -76,6 +76,20 @@
         </q-item-label>
         <provider-input-items v-model="perfs.systemProvider" />
         <model-input-items v-model="perfs.systemModel" />
+        <q-item-label
+          caption
+          p="x-4 y-2"
+          text-on-sur-var
+        >
+          用于总结对话标题、提取 Artifacts。如果留空，则使用默认服务商设置
+        </q-item-label>
+        <q-separator spaced />
+        <q-item-label
+          header
+          id="operation"
+        >
+          功能
+        </q-item-label>
         <q-item>
           <q-item-section>
             <q-item-label>自动总结对话标题</q-item-label>
@@ -87,45 +101,17 @@
             <q-toggle v-model="perfs.autoGenTitle" />
           </q-item-section>
         </q-item>
-        <q-item-label
-          caption
-          p="x-4 y-2"
-          text-on-sur-var
-        >
-          用于总结对话标题。如果留空，则使用默认服务商设置
-        </q-item-label>
-        <q-separator spaced />
-        <q-item-label
-          header
-          id="operation"
-        >
-          操作
-        </q-item-label>
-        <q-item>
-          <q-item-section>发送消息快捷键</q-item-section>
-          <q-item-section side>
-            <q-select
-              class="w-150px"
-              v-model="perfs.sendKey"
-              :options="[{ label: 'Ctrl + Enter', value: 'ctrl+enter' }, { label: 'Shift + Enter', value: 'shift+enter' }, { label: 'Enter', value: 'enter' }]"
-              filled
-              dense
-              emit-value
-              map-options
-            />
-          </q-item-section>
-        </q-item>
         <q-item>
           <q-item-section>
             <q-item-label>
-              消息引用按钮
+              消息选中文本菜单
             </q-item-label>
             <q-item-label caption>
-              用鼠标选中消息文本时，显示引用按钮
+              选中消息文本时，显示操作按钮
             </q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-toggle v-model="perfs.messageQuoteBtn" />
+            <q-toggle v-model="perfs.messageSelectionBtn" />
           </q-item-section>
         </q-item>
         <q-item>
@@ -171,6 +157,96 @@
               class="min-w-120px"
               dense
               filled
+            />
+          </q-item-section>
+        </q-item>
+        <q-item>
+          <q-item-section>
+            <q-item-label>
+              生成时自动锁定底部
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-toggle v-model="perfs.streamingLockBottom" />
+          </q-item-section>
+        </q-item>
+        <q-item>
+          <q-item-section>
+            <q-item-label>
+              消息内容目录
+            </q-item-label>
+            <q-item-label caption>
+              空间足够时，在消息旁边显示目录
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-toggle v-model="perfs.messageCatalog" />
+          </q-item-section>
+        </q-item>
+        <q-expansion-item label="Artifacts 设置">
+          <q-item>
+            <q-item-section>
+              <q-item-label>
+                启用 Artifacts 功能
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <platform-enabled-input
+                v-model="perfs.artifactsEnabled"
+                class="min-w-120px"
+                dense
+                filled
+              />
+            </q-item-section>
+          </q-item>
+          <q-item>
+            <q-item-section>
+              <q-item-label>
+                自动提取 Artifact
+              </q-item-label>
+              <q-item-label caption>
+                自动提取助手回答中的 Artifact
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-toggle v-model="perfs.artifactsAutoExtract" />
+            </q-item-section>
+          </q-item>
+          <q-item>
+            <q-item-section>
+              提取时保留原文
+            </q-item-section>
+            <q-item-section side>
+              <q-toggle v-model="perfs.artifactsReserveOriginal" />
+            </q-item-section>
+          </q-item>
+          <q-item>
+            <q-item-section>
+              默认自动命名 Artifact
+            </q-item-section>
+            <q-item-section side>
+              <q-toggle v-model="perfs.artifactsAutoName" />
+            </q-item-section>
+          </q-item>
+        </q-expansion-item>
+        <q-separator spaced />
+        <q-item-label
+          header
+          id="operation"
+        >
+          操作
+        </q-item-label>
+        <q-item>
+          <q-item-section>发送消息快捷键</q-item-section>
+          <q-item-section side>
+            <q-select
+              class="w-150px"
+              v-model="perfs.sendKey"
+              :options="[{ label: 'Ctrl + Enter', value: 'ctrl+enter' }, { label: 'Shift + Enter', value: 'shift+enter' }, { label: 'Enter', value: 'enter' }]"
+              filled
+              dense
+              emit-value
+              map-options
             />
           </q-item-section>
         </q-item>
@@ -287,7 +363,104 @@
             </q-select>
           </q-item-section>
         </q-item>
+        <q-expansion-item
+          label="Markdown 渲染"
+          icon="sym_o_markdown"
+          :content-inset-level="1"
+        >
+          <q-item>
+            <q-item-section>
+              <q-item-label>
+                主题
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-select
+                :options="mdPreviewThemes"
+                v-model="perfs.mdPreviewTheme"
+                dense
+                filled
+              />
+            </q-item-section>
+          </q-item>
+          <q-item>
+            <q-item-section>
+              代码主题
+            </q-item-section>
+            <q-item-section side>
+              <q-select
+                :options="mdCodeThemes"
+                v-model="perfs.mdCodeTheme"
+                dense
+                filled
+              />
+            </q-item-section>
+          </q-item>
+          <q-item>
+            <q-item-section>
+              禁用 Mermaid
+            </q-item-section>
+            <q-item-section side>
+              <q-toggle v-model="perfs.mdNoMermaid" />
+            </q-item-section>
+          </q-item>
+          <q-item>
+            <q-item-section>
+              <q-item-label>
+                代码自动折叠阈值
+              </q-item-label>
+              <q-item-label caption>
+                代码块超过此行数后，自动折叠。默认不折叠
+              </q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-input
+                type="number"
+                v-model.number="perfs.mdAutoFoldThreshold"
+                dense
+                filled
+                class="w-120px"
+                clearable
+              />
+            </q-item-section>
+          </q-item>
+        </q-expansion-item>
         <q-separator spaced />
+        <q-item-label
+          header
+          id="ui"
+        >
+          数据
+        </q-item-label>
+        <q-item>
+          <q-item-section avatar>
+            <q-icon name="sym_o_database" />
+          </q-item-section>
+          <q-item-section>
+            <q-item-label>用户数据</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <div
+              flex
+              gap-2
+            >
+              <q-btn
+                label="导出"
+                @click="exportData"
+                unelevated
+                bg-sec-c
+                text-on-sec-c
+              />
+              <q-btn
+                label="导入"
+                unelevated
+                bg-sec-c
+                text-on-sec-c
+                @click="importData"
+              />
+            </div>
+          </q-item-section>
+        </q-item>
         <q-item
           clickable
           v-ripple
@@ -307,13 +480,13 @@
 </template>
 
 <script setup lang="ts">
-import { useQuasar } from 'quasar'
+import { exportFile, useQuasar } from 'quasar'
 import { useUserPerfsStore } from 'src/stores/user-perfs'
 import HctPreviewCircle from 'src/components/HctPreviewCircle.vue'
 import HueSliderDialog from 'src/components/HueSliderDialog.vue'
 import { computed, ref } from 'vue'
 import { useUiStateStore } from 'src/stores/ui-state'
-import { dialogOptions, modelOptions } from 'src/utils/values'
+import { dialogOptions, mdCodeThemes, mdPreviewThemes, modelOptions } from 'src/utils/values'
 import CopyBtn from 'src/components/CopyBtn.vue'
 import AAvatar from 'src/components/AAvatar.vue'
 import PickAvatarDialog from 'src/components/PickAvatarDialog.vue'
@@ -328,6 +501,8 @@ import { pageFhStyle } from 'src/utils/functions'
 import { DexieDBURL, LitellmBaseURL } from 'src/utils/config'
 import PlatformEnabledInput from 'src/components/PlatformEnabledInput.vue'
 import { useModel } from 'src/composables/model'
+import { exportDB } from 'dexie-export-import'
+import ImportDataDialog from 'src/components/ImportDataDialog.vue'
 
 const uiStateStore = useUiStateStore()
 const { perfs, restore } = useUserPerfsStore()
@@ -353,8 +528,9 @@ function pickUserAvatar() {
 function restoreSettings() {
   $q.dialog({
     title: '恢复默认设置',
-    message: '确定将所有本地设置恢复默认？',
-    cancel: true
+    message: '确定将所有设置恢复默认？',
+    cancel: true,
+    ...dialogOptions
   }).onOk(() => { restore() })
 }
 const providerLink = computed(() => {
@@ -390,6 +566,23 @@ function getModelList() {
       message: '获取模型列表失败',
       color: 'negative'
     })
+  })
+}
+
+function exportData() {
+  exportDB(db).then(blob => {
+    exportFile('aiaw_user_db.json', blob)
+  }).catch(err => {
+    console.error(err)
+    $q.notify({
+      message: '导出失败',
+      color: 'negative'
+    })
+  })
+}
+function importData() {
+  $q.dialog({
+    component: ImportDataDialog
   })
 }
 

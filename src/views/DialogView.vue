@@ -84,7 +84,6 @@
           </q-item-label>
           <a-tip
             tip-key="configure-common-models"
-            dense
             rd-0
           >
             可以在 <router-link
@@ -136,10 +135,13 @@
             :model-value="dialog.msgRoute[index - 1] + 1"
             :message="messageMap[i]"
             :child-num="dialog.msgTree[chain[index - 1]].length"
+            :scroll-container
             @update:model-value="switchChain(index - 1, $event - 1)"
             @edit="edit(index)"
             @regenerate="regenerate(index)"
             @quote="addInputItems([$event])"
+            @extract-artifact="extractArtifact(messageMap[i], ...$event)"
+            @rendered="messageMap[i].generatingSession && lockBottom()"
             pt-2
             pb-4
           />
@@ -372,10 +374,10 @@ import { useModel } from 'src/composables/model'
 import { throttle, useQuasar } from 'quasar'
 import AssistantItem from 'src/components/AssistantItem.vue'
 import { useSystemModel } from 'src/composables/system-model'
-import { ActionMessage, GenDialogTitle, PluginsPrompt } from 'src/utils/templates'
+import { ActionMessage, ExtractArtifactPrompt, ExtractArtifactResult, GenDialogTitle, NameArtifactPrompt, PluginsPrompt } from 'src/utils/templates'
 import sessions from 'src/utils/sessions'
 import PromptVarInput from 'src/components/PromptVarInput.vue'
-import { MessageContent, PluginApi, ApiCallError, Plugin, Dialog, Message, Workspace, UserMessageContent, StoredItem, ModelSettings, ApiResultItem } from 'src/utils/types'
+import { MessageContent, PluginApi, ApiCallError, Plugin, Dialog, Message, Workspace, UserMessageContent, StoredItem, ModelSettings, ApiResultItem, Artifact, ConvertArtifactOptions, AssistantMessageContent } from 'src/utils/types'
 import { usePluginsStore } from 'src/stores/plugins'
 import MessageItem from 'src/components/MessageItem.vue'
 import { scaleBlob } from 'src/utils/image-process'
@@ -398,6 +400,8 @@ import { MaxMessageFileSizeMB } from 'src/utils/config'
 import ATip from 'src/components/ATip.vue'
 import { useListenKey } from 'src/composables/listen-key'
 import { useSetTitle } from 'src/composables/set-title'
+import { useCreateArtifact } from 'src/composables/create-artifact'
+import artifactsPlugin from 'src/utils/artifacts-plugin'
 
 const props = defineProps<{
   id: string
@@ -663,7 +667,7 @@ function getChainMessages() {
           content: [
             { type: 'text', text: content.text },
             ...content.items.map(id => itemMap.value[id]).map(i => {
-              if (i.contentText) {
+              if (i.contentText != null) {
                 if (i.type === 'file') {
                   return { type: 'text' as const, text: `<file_content filename="${i.name}">\n${i.contentText}\n</file_content>` }
                 } else if (i.type === 'quote') {
@@ -692,13 +696,13 @@ function getChainMessages() {
         })
       } else if (content.type === 'assistant-tool') {
         if (content.status !== 'completed') return
-        const { name, args, result } = content
+        const { name, args, result, pluginId } = content
         const id = genId()
         val.push({
           role: 'assistant',
           content: [{
             type: 'tool-call',
-            toolName: name,
+            toolName: `${pluginId}-${name}`,
             toolCallId: id,
             args
           }]
@@ -707,9 +711,10 @@ function getChainMessages() {
           role: 'tool',
           content: [{
             type: 'tool-result',
-            toolName: name,
+            toolName: `${pluginId}-${name}`,
             toolCallId: id,
-            result: result.map(id => itemMap.value[id])
+            result: toToolResultContent(result.map(id => itemMap.value[id])),
+            experimental_content: toToolResultContent(result.map(id => itemMap.value[id]))
           }]
         })
       } else if (content.type === 'assistant-action') {
@@ -805,6 +810,7 @@ async function send() {
   perfs.autoGenTitle && chain.value.length === 4 && genTitle()
 }
 
+const artifacts = inject<Ref<Artifact[]>>('artifacts')
 const abortController = ref<AbortController>()
 async function stream(target, insert = false) {
   const settings: Partial<ModelSettings> = {}
@@ -888,17 +894,7 @@ async function stream(target, insert = false) {
           if (error) throw new ApiCallError(error)
           return result
         },
-        experimental_toToolResultContent(items: StoredItem[]) {
-          const val = []
-          for (const item of items) {
-            if (item.type === 'text') {
-              val.push({ type: 'text', text: item.contentText })
-            } else if (mimeTypeMatch(item.mimeType, model.value.inputTypes.tool)) {
-              val.push({ type: item.mimeType.startsWith('image/') ? 'image' : 'file', mimeType: item.mimeType, data: item.contentBuffer })
-            }
-          }
-          return val
-        }
+        experimental_toToolResultContent: toToolResultContent
       })
     })
     const pluginInfos = {}
@@ -937,7 +933,24 @@ async function stream(target, insert = false) {
       $q.notify({ message: `插件「${p.title}」提示词模板解析失败`, color: 'negative' })
     }
   }))
-
+  if (isPlatformEnabled(perfs.artifactsEnabled) && artifacts.value.some(a => a.open)) {
+    const { plugin, getPrompt, api } = artifactsPlugin
+    enabledPlugins.push({
+      id: plugin.id,
+      prompt: getPrompt(artifacts.value.filter(a => a.open)),
+      actions: []
+    })
+    tools[`${plugin.id}-${api.name}`] = tool({
+      description: api.prompt,
+      parameters: jsonSchema(api.parameters),
+      async execute(args) {
+        const { result, error } = await callTool(plugin, api, args)
+        if (error) throw new ApiCallError(error)
+        return result
+      },
+      experimental_toToolResultContent: toToolResultContent
+    })
+  }
   try {
     if (noRoundtrip) settings.maxSteps = 1
     abortController.value = new AbortController()
@@ -955,6 +968,7 @@ async function stream(target, insert = false) {
     if (assistant.value.stream) {
       result = await streamText(params)
       await db.messages.update(id, { status: 'streaming' })
+      lockingBottom.value = perfs.streamingLockBottom
       for await (const textDelta of result.textStream) {
         messageContent.text += textDelta
         for (const action of actions) {
@@ -1039,7 +1053,36 @@ async function stream(target, insert = false) {
     }
     await db.messages.update(id, { contents, error: e.message, status: 'failed', generatingSession: null })
   }
+  perfs.artifactsAutoExtract && autoExtractArtifact()
 }
+function toToolResultContent(items: StoredItem[]) {
+  const val = []
+  for (const item of items) {
+    if (item.type === 'text') {
+      val.push({ type: 'text', text: item.contentText })
+    } else if (mimeTypeMatch(item.mimeType, model.value.inputTypes.tool)) {
+      val.push({ type: item.mimeType.startsWith('image/') ? 'image' : 'file', mimeType: item.mimeType, data: item.contentBuffer })
+    }
+  }
+  return val
+}
+const lockingBottom = ref(false)
+let lastScrollTop
+function scrollListener() {
+  const container = scrollContainer.value
+  if (container.scrollTop < lastScrollTop) {
+    lockingBottom.value = false
+  }
+  lastScrollTop = container.scrollTop
+}
+function lockBottom() {
+  lockingBottom.value && scroll('bottom', 'auto')
+}
+watch(lockingBottom, val => {
+  val
+    ? scrollContainer.value.addEventListener('scroll', scrollListener)
+    : scrollContainer.value.removeEventListener('scroll', scrollListener)
+})
 const activePlugins = computed<Plugin[]>(() => pluginsStore.plugins.filter(p => p.available && assistant.value.plugins[p.id]?.enabled))
 const usage = computed(() => messageMap.value[chain.value.at(-2)]?.usage)
 
@@ -1053,7 +1096,7 @@ async function genTitle() {
         lang: 'zh-CN'
       })
     })
-    dialog.value.name = text
+    await db.dialogs.update(props.id, { name: text })
   } catch (e) {
     console.error(e)
     $q.notify({ message: '总结对话失败，请检查系统助手设置', color: 'negative' })
@@ -1120,14 +1163,13 @@ function switchTo(target: 'prev' | 'next' | 'first' | 'last') {
   if (to < 0 || to >= num || to === curr) return
   switchChain(index, to)
 }
-function scroll(action: 'up' | 'down' | 'top' | 'bottom') {
+function scroll(action: 'up' | 'down' | 'top' | 'bottom', behavior: 'smooth' | 'auto' = 'smooth') {
   const { container, items } = getEls()
-
   if (action === 'top') {
-    container.scrollTo({ top: 0, behavior: 'smooth' })
+    container.scrollTo({ top: 0, behavior })
     return
   } else if (action === 'bottom') {
-    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    container.scrollTo({ top: container.scrollHeight, behavior })
     return
   }
 
@@ -1223,6 +1265,54 @@ if (isPlatformEnabled(perfs.enableShortcutKey)) {
   useListenKey(toRef(perfs, 'regenerateCurrKey'), () => regenerateCurr())
   useListenKey(toRef(perfs, 'editCurrKey'), () => editCurr())
   useListenKey(toRef(perfs, 'focusDialogInputKey'), () => focusInput())
+}
+
+async function genArtifactName(content: string) {
+  const { text } = await generateText({
+    model: systemModel.sdkModel.value,
+    prompt: engine.parseAndRenderSync(NameArtifactPrompt, { content })
+  })
+  return text
+}
+const { createArtifact } = useCreateArtifact(workspace)
+async function extractArtifact(message: Message, text: string, pattern, options: ConvertArtifactOptions) {
+  const name = options.name || await genArtifactName(text)
+  const id = await createArtifact({
+    name,
+    language: options.lang,
+    versions: [{
+      date: new Date(),
+      text
+    }],
+    tmp: text
+  })
+  if (options.reserveOriginal) return
+  const to = `> 已转为 Artifact：<router-link to="?openArtifact=${id}">${name}</router-link>\n`
+  const index = message.contents.findIndex(c => ['assistant-message', 'user-message'].includes(c.type))
+  const content = message.contents[index] as UserMessageContent | AssistantMessageContent
+  await db.messages.update(message.id, {
+    [`contents.${index}.text`]: content.text.replace(pattern, to) as any
+  })
+}
+async function autoExtractArtifact() {
+  const message = messageMap.value[chain.value.at(-2)]
+  const { text } = await generateText({
+    model: systemModel.sdkModel.value,
+    prompt: engine.parseAndRenderSync(ExtractArtifactPrompt, {
+      contents: chain.value.slice(-3, -1).map(id => messageMap.value[id].contents).flat()
+    })
+  })
+  const object: ExtractArtifactResult = JSON.parse(text)
+  if (!object.found) return
+  const reg = new RegExp(`(\`{3,}.*\\n)?(${object.regex})(\\s*\`{3,})?`)
+  const content = message.contents.find(c => c.type === 'assistant-message')
+  const match = content.text.match(reg)
+  if (!match) return
+  await extractArtifact(message, match[2], reg, {
+    name: object.name,
+    lang: object.language,
+    reserveOriginal: perfs.artifactsReserveOriginal
+  })
 }
 
 defineEmits(['toggle-drawer'])
