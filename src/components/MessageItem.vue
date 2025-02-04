@@ -35,7 +35,6 @@
       <div
         position-relative
         :class="message.type === 'user' ? 'min-h-48px' : 'min-h-24px min-w-80px'"
-        ref="messageContentEl"
         class="group"
       >
         <div
@@ -44,6 +43,17 @@
           :class="message.type === 'user' ? 'bg-sur-c-low' : 'bg-sur'"
           rd-lg
         >
+          <md-preview
+            v-if="content.type === 'assistant-message' && content.reasoning"
+            :model-value="`\`\`\`思考内容\n${content.reasoning}\n\`\`\``"
+            v-bind="mdPreviewProps"
+            @on-html-changed="onHtmlChanged(false)"
+            class="content-reasoning"
+            bg-sur
+            no-highlight
+            :show-code-row-number="false"
+            :auto-fold-threshold="message.generatingSession ? Infinity : 0"
+          />
           <div
             ref="textDiv"
             @mouseup="onSelect('mouse')"
@@ -58,7 +68,7 @@
               rd-lg
               :model-value="content.text"
               v-bind="mdPreviewProps"
-              @on-html-changed="onHtmlChanged"
+              @on-html-changed="onHtmlChanged(true)"
             />
             <transition name="fade">
               <q-btn-group
@@ -73,7 +83,7 @@
                 <q-btn
                   icon="sym_o_format_quote"
                   label="引用"
-                  @click="quote"
+                  @click="quote(selected.text)"
                   no-caps
                   sm-icon
                 />
@@ -162,6 +172,7 @@
           text-on-sur-var
         />
         <div
+          v-if="message.status !== 'streaming'"
           text="out xs"
           pos-absolute
           right-1
@@ -233,6 +244,11 @@
                 @click="edit"
               />
               <menu-item
+                icon="sym_o_format_quote"
+                label="引用"
+                @click="quote(textContent.text)"
+              />
+              <menu-item
                 icon="sym_o_info"
                 label="更多信息"
                 @click="moreInfo"
@@ -272,7 +288,6 @@
 <script setup lang="ts">
 import { MdPreview, MdCatalog } from 'md-editor-v3'
 import { db } from 'src/utils/db'
-import 'md-editor-v3/lib/preview.css'
 import { computed, ComputedRef, inject, nextTick, onUnmounted, reactive, ref, watchEffect } from 'vue'
 import sessions from 'src/utils/sessions'
 import { MessageContent, Message, ApiResultItem, UserMessageContent, AssistantMessageContent, ConvertArtifactOptions } from 'src/utils/types'
@@ -450,12 +465,12 @@ if (perfs.messageSelectionBtn) {
   document.addEventListener('selectionchange', listener)
   onUnmounted(() => document.removeEventListener('selectionchange', listener))
 }
-function quote() {
+function quote(text: string) {
   const name = props.message.type === 'assistant' ? '助手消息引用' : '用户消息引用'
   emit('quote', {
     type: 'quote',
-    name: `${name}：${textBeginning(selected.text, 10)}`,
-    contentText: selected.text
+    name: `${name}：${textBeginning(text, 10)}`,
+    contentText: text
   })
 }
 function edit() {
@@ -497,16 +512,15 @@ function selectedConvertArtifact() {
   convertArtifact(text, text, 'markdown')
 }
 
-function onHtmlChanged() {
+function onHtmlChanged(inject = false) {
   nextTick(() => {
-    injectConvertArtifact()
+    inject && injectConvertArtifact()
     emit('rendered')
   })
 }
-const messageContentEl = ref()
 function injectConvertArtifact() {
   if (!isPlatformEnabled(perfs.artifactsEnabled)) return
-  const el: HTMLElement = messageContentEl.value
+  const el: HTMLElement = textDiv.value[0]
   el.querySelectorAll('.md-editor-code').forEach(code => {
     if (code.querySelector('.md-editor-convert-artifact')) return
     const anchor = code.querySelector('.md-editor-collapse-tips')
@@ -533,5 +547,14 @@ const mdPreviewProps = useMdPreviewProps()
 <style lang="scss">
 .md-editor-preview-wrapper {
   --at-apply: 'py-0';
+}
+.content-reasoning {
+  code {
+    white-space: pre-wrap !important;
+  }
+
+  details {
+    margin: 8px 0 0 0 !important;
+  }
 }
 </style>

@@ -10,6 +10,7 @@ import { createTogetherAI } from '@ai-sdk/togetherai'
 import { createCohere } from '@ai-sdk/cohere'
 import { createGroq } from '@ai-sdk/groq'
 import { createOllama } from 'ollama-ai-provider'
+import { createDeepSeek } from '@ai-sdk/deepseek'
 
 const commonSettings = {
   baseURL: String({ title: 'API 地址', description: '默认为该服务商官方地址' }),
@@ -62,6 +63,14 @@ const ProviderTypes: ProviderType[] = [
     }),
     initialSettings: {},
     constructor: createGoogleGenerativeAI
+  },
+  {
+    name: 'deepseek',
+    label: 'DeepSeek',
+    avatar: { type: 'svg', name: 'deepseek-c' },
+    settings: Object(commonSettings),
+    initialSettings: {},
+    constructor: createDeepSeek
   },
   {
     name: 'mistral',
@@ -129,6 +138,8 @@ const models: Model[] = [
   { name: 'o1-mini-2024-09-12', inputTypes: InputTypes.textOnly },
   { name: 'o1-preview', inputTypes: InputTypes.textOnly },
   { name: 'o1-preview-2024-09-12', inputTypes: InputTypes.textOnly },
+  { name: 'o3-mini', inputTypes: InputTypes.textOnly },
+  { name: 'o3-mini-2025-01-31', inputTypes: InputTypes.textOnly },
   { name: 'gpt-4o', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-2024-08-06', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-2024-05-13', inputTypes: InputTypes.commonVision },

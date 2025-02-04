@@ -6,8 +6,9 @@
         :assistant
         v-if="dialog"
         text-base
-        dense
         item-rd
+        py-1
+        min-h-0
       />
       <q-menu>
         <q-list>
@@ -18,6 +19,8 @@
             :assistant="a"
             @click="dialog.assistantId = a.id"
             v-close-popup
+            py-1.5
+            min-h-0
           />
         </q-list>
       </q-menu>
@@ -139,7 +142,7 @@
             @update:model-value="switchChain(index - 1, $event - 1)"
             @edit="edit(index)"
             @regenerate="regenerate(index)"
-            @quote="addInputItems([$event])"
+            @quote="quote"
             @extract-artifact="extractArtifact(messageMap[i], ...$event)"
             @rendered="messageMap[i].generatingSession && lockBottom()"
             pt-2
@@ -367,9 +370,9 @@
 import { computed, inject, onUnmounted, provide, ref, Ref, toRaw, toRef, watch, nextTick } from 'vue'
 import { db } from 'src/utils/db'
 import { useLiveQueryWithDeps } from 'src/composables/live-query'
-import { almostEqual, escapeRegex, genId, isPlatformEnabled, isTextFile, mimeTypeMatch, pageFhStyle, textBeginning, wrapCode } from 'src/utils/functions'
+import { almostEqual, displayLength, genId, isPlatformEnabled, isTextFile, mimeTypeMatch, pageFhStyle, textBeginning, wrapCode, wrapQuote } from 'src/utils/functions'
 import { useAssistantsStore } from 'src/stores/assistants'
-import { streamText, CoreMessage, generateText, tool, jsonSchema } from 'ai'
+import { streamText, CoreMessage, generateText, tool, jsonSchema, StreamTextResult, GenerateTextResult } from 'ai'
 import { useModel } from 'src/composables/model'
 import { throttle, useQuasar } from 'quasar'
 import AssistantItem from 'src/components/AssistantItem.vue'
@@ -546,7 +549,7 @@ function onTextPaste(ev: ClipboardEvent) {
     const lang = JSON.parse(data).mode ?? ''
     if (lang === 'markdown') return
     const wrappedCode = wrapCode(code, lang)
-    document.execCommand('insertText', false, wrappedCode)
+    document.execCommand('insertText', false, '\n' + wrappedCode)
     ev.preventDefault()
   }
 }
@@ -565,7 +568,7 @@ function onPaste(ev: ClipboardEvent) {
       const text = clipboardData.getData('text/plain')
       addInputItems([{
         type: 'text',
-        name: `粘贴文本：${textBeginning(text, 10)}`,
+        name: `粘贴文本：${textBeginning(text, 12)}`,
         contentText: text
       }])
     }
@@ -629,6 +632,14 @@ async function parseFiles(files: File[]) {
   }).onOk((files: ApiResultItem[]) => {
     addInputItems(files)
   })
+}
+function quote(item: ApiResultItem) {
+  if (displayLength(item.contentText) > 200) {
+    addInputItems([item])
+  } else {
+    const { text } = inputMessageContent.value
+    updateInputText(text ? text + '\n' + wrapQuote(item.contentText) : wrapQuote(item.contentText))
+  }
 }
 async function addInputItems(items: ApiResultItem[]) {
   const storedItems = items.map(i => ({ ...i, id: genId(), dialogId: props.id, references: 0 }))
@@ -820,7 +831,7 @@ async function stream(target, insert = false) {
       settings[key] = val
     }
   }
-  let messageContent: MessageContent = {
+  const messageContent: AssistantMessageContent = {
     type: 'assistant-message',
     text: ''
   }
@@ -964,78 +975,26 @@ async function stream(target, insert = false) {
       ...settings,
       abortSignal: abortController.value.signal
     }
-    let result
+    let result: StreamTextResult<any, any> | GenerateTextResult<any, any>
     if (assistant.value.stream) {
       result = await streamText(params)
       await db.messages.update(id, { status: 'streaming' })
       lockingBottom.value = perfs.streamingLockBottom
-      for await (const textDelta of result.textStream) {
-        messageContent.text += textDelta
-        for (const action of actions) {
-          const tag = `${action.pluginId}-${action.name}`
-          const openReg = new RegExp(`<${escapeRegex(tag)} +(\\{.*\\}) *>\\n`)
-          const closeReg = new RegExp(`\\n</${escapeRegex(tag)} *>`)
-          const selfCloseReg = new RegExp(`<${escapeRegex(tag)} +(\\{.*\\}) */>`)
-          const openMatch = messageContent.text.match(openReg)
-          const closeMatch = messageContent.text.match(closeReg)
-          const selfCloseMatch = messageContent.text.match(selfCloseReg)
-          if (openMatch) {
-            if (messageContent.type !== 'assistant-message') continue
-            try {
-              const args = JSON.parse(openMatch[1])
-              const [prevText, currText] = messageContent.text.split(openMatch[0])
-              messageContent.text = prevText
-              messageContent = {
-                type: 'assistant-action',
-                pluginId: action.pluginId,
-                name: action.name,
-                args,
-                text: currText,
-                status: 'streaming'
-              }
-              contents.push(messageContent)
-            } catch (e) {
-              continue
-            }
-          } else if (closeMatch) {
-            if (messageContent.type !== 'assistant-action' || messageContent.name !== action.name) continue
-            const [prevText, currText] = messageContent.text.split(closeMatch[0])
-            messageContent.text = prevText
-            messageContent.status = 'ready'
-            messageContent = {
-              type: 'assistant-message',
-              text: currText
-            }
-            contents.push(messageContent)
-          } else if (selfCloseMatch) {
-            if (messageContent.type !== 'assistant-message') continue
-            try {
-              const args = JSON.parse(selfCloseMatch[1])
-              const [prevText, currText] = messageContent.text.split(selfCloseMatch[0])
-              messageContent.text = prevText
-              messageContent = {
-                type: 'assistant-action',
-                pluginId: action.pluginId,
-                name: action.name,
-                args,
-                status: 'ready'
-              }
-              contents.push(messageContent)
-              messageContent = {
-                type: 'assistant-message',
-                text: currText
-              }
-              contents.push(messageContent)
-            } catch (e) {
-              continue
-            }
-          }
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') {
+          messageContent.text += part.textDelta
+          update()
+        } else if (part.type === 'reasoning') {
+          messageContent.reasoning = (messageContent.reasoning ?? '') + part.textDelta
+          update()
+        } else if (part.type === 'error') {
+          throw part.error
         }
-        update()
       }
     } else {
       result = await generateText(params)
       messageContent.text = await result.text
+      messageContent.reasoning = await result.reasoning
     }
 
     const usage = await result.usage
@@ -1054,6 +1013,7 @@ async function stream(target, insert = false) {
     await db.messages.update(id, { contents, error: e.message, status: 'failed', generatingSession: null })
   }
   perfs.artifactsAutoExtract && autoExtractArtifact()
+  lockingBottom.value = false
 }
 function toToolResultContent(items: StoredItem[]) {
   const val = []
@@ -1079,9 +1039,13 @@ function lockBottom() {
   lockingBottom.value && scroll('bottom', 'auto')
 }
 watch(lockingBottom, val => {
-  val
-    ? scrollContainer.value.addEventListener('scroll', scrollListener)
-    : scrollContainer.value.removeEventListener('scroll', scrollListener)
+  if (val) {
+    lastScrollTop = scrollContainer.value.scrollTop
+    scrollContainer.value.addEventListener('scroll', scrollListener)
+  } else {
+    lastScrollTop = null
+    scrollContainer.value.removeEventListener('scroll', scrollListener)
+  }
 })
 const activePlugins = computed<Plugin[]>(() => pluginsStore.plugins.filter(p => p.available && assistant.value.plugins[p.id]?.enabled))
 const usage = computed(() => messageMap.value[chain.value.at(-2)]?.usage)
