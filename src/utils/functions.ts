@@ -164,6 +164,56 @@ function artifactUnsaved(artifact: Artifact) {
   return artifact.tmp !== artifact.versions[artifact.currIndex].text
 }
 
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const base64WithoutPrefix = base64.split(',').pop() || base64
+  const binaryString = atob(base64WithoutPrefix)
+
+  const len = binaryString.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+
+  return bytes.buffer
+}
+
+function removeUndefinedProps(obj) {
+  if (typeof obj !== 'object' || obj === null) return
+
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      if (typeof obj[key] === 'object' && obj[key] !== null) {
+        removeUndefinedProps(obj[key])
+      }
+      if (obj[key] === undefined) delete obj[key]
+    }
+  }
+}
+
+/*
+    cyrb53 (c) 2018 bryc (github.com/bryc)
+    License: Public domain (or MIT if needed). Attribution appreciated.
+    A fast and simple 53-bit string hash function with decent collision resistance.
+    Largely inspired by MurmurHash2/3, but with a focus on speed/simplicity.
+*/
+function cyrb53(str: string, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507)
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507)
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0)
+}
+
+function hash53(str: string, seed = 0) {
+  return cyrb53(str, seed).toString(16)
+}
+
 export {
   randomHash,
   escapeRegex,
@@ -189,5 +239,9 @@ export {
   saveArtifactChanges,
   restoreArtifactChanges,
   blobToBase64,
-  artifactUnsaved
+  base64ToArrayBuffer,
+  artifactUnsaved,
+  removeUndefinedProps,
+  cyrb53,
+  hash53
 }

@@ -45,6 +45,7 @@ interface Perfs {
   mdAutoFoldThreshold?: MdPreviewProps['autoFoldThreshold']
   streamingLockBottom: boolean
   messageCatalog: boolean
+  showWarnings: boolean
 }
 
 export const useUserPerfsStore = defineStore('user-perfs', () => {
@@ -64,6 +65,7 @@ export const useUserPerfsStore = defineStore('user-perfs', () => {
       'gpt-4o',
       'gpt-4o-mini',
       'o3-mini',
+      'claude-3-7-sonnet-20250219',
       'claude-3-5-sonnet-20241022',
       'gemini-1.5-pro',
       'gemini-2.0-flash',
@@ -99,7 +101,8 @@ export const useUserPerfsStore = defineStore('user-perfs', () => {
     mdNoMermaid: false,
     mdAutoFoldThreshold: null,
     streamingLockBottom: true,
-    messageCatalog: true
+    messageCatalog: true,
+    showWarnings: false
   }
   const [perfs, ready] = persistentReactive('#user-perfs', { ...defaultPerfs })
   watchEffect(() => {

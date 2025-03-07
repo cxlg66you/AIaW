@@ -5,7 +5,6 @@
     <q-toolbar-title v-if="plugin">
       {{ plugin.title }}
     </q-toolbar-title>
-    <q-space />
   </view-common-header>
   <q-page-container v-if="assistant && plugin">
     <q-page>
@@ -18,16 +17,16 @@
             <q-item-section
               avatar
               text-sec
-              w=" xs:100px md:150px"
+              w="xs:120px sm:200px"
             >
-              信息提供
+              {{ $t('pluginAdjust.infoProvider') }}
             </q-item-section>
-            <q-item-section>
-              参数
+            <q-item-section text-on-sur-var>
+              {{ $t('pluginAdjust.parameters') }}
             </q-item-section>
             <q-item-section side>
               <div>
-                启用
+                {{ $t('pluginAdjust.enable') }}
               </div>
             </q-item-section>
           </q-item>
@@ -37,7 +36,7 @@
           >
             <q-item-section
               avatar
-              w=" xs:100px md:150px"
+              w="xs:120px sm:200px"
             >
               <q-item-label>{{ info.name }}</q-item-label>
               <q-item-label caption>
@@ -52,19 +51,7 @@
               />
             </q-item-section>
             <q-item-section side>
-              <div
-                flex
-                items-center
-              >
-                <q-checkbox v-model="info.enabled" />
-                <q-btn
-                  ml-2
-                  flat
-                  round
-                  icon="sym_o_close"
-                  @click="assistantPlugin.infos.splice(assistantPlugin.infos.indexOf(info), 1)"
-                />
-              </div>
+              <q-checkbox v-model="info.enabled" />
             </q-item-section>
           </q-item>
           <q-separator spaced />
@@ -72,11 +59,11 @@
         <template v-if="assistantPlugin.tools.length">
           <q-item>
             <q-item-section text-sec>
-              工具调用
+              {{ $t('pluginAdjust.toolCall') }}
             </q-item-section>
             <q-item-section side>
               <div>
-                启用
+                {{ $t('pluginAdjust.enable') }}
               </div>
             </q-item-section>
           </q-item>
@@ -91,54 +78,7 @@
               </q-item-label>
             </q-item-section>
             <q-item-section side>
-              <div
-                flex
-                items-center
-              >
-                <q-checkbox v-model="tool.enabled" />
-              </div>
-            </q-item-section>
-          </q-item>
-          <q-separator spaced />
-        </template>
-        <template v-if="assistantPlugin.actions.length">
-          <q-item>
-            <q-item-section text-sec>
-              操作执行
-            </q-item-section>
-            <q-item-section side>
-              <div
-                flex
-                items-center
-              >
-                <span>自动执行</span>
-                <span
-                  ml-4
-                >启用</span>
-              </div>
-            </q-item-section>
-          </q-item>
-          <q-item
-            v-for="action of assistantPlugin.actions"
-            :key="action.name"
-          >
-            <q-item-section>
-              <q-item-label>{{ action.name }}</q-item-label>
-              <q-item-label caption>
-                {{ apiMap[action.name]?.description ?? '' }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <div
-                flex
-                items-center
-              >
-                <q-checkbox v-model="action.autoExecute" />
-                <q-checkbox
-                  ml-4
-                  v-model="action.enabled"
-                />
-              </div>
+              <q-checkbox v-model="tool.enabled" />
             </q-item-section>
           </q-item>
           <q-separator spaced />
@@ -146,7 +86,7 @@
         <template v-if="plugin.promptVars?.length">
           <q-item>
             <q-item-section text-sec>
-              变量
+              {{ $t('pluginAdjust.variables') }}
             </q-item-section>
           </q-item>
           <prompt-var-input
@@ -162,19 +102,20 @@
           p="x-4 y-2"
           text-on-sur-var
         >
-          提示：插件的全局设置在<router-link
+          {{ $t('pluginAdjust.globalSettingsTip') }}
+          <router-link
             :to="`/plugins/${plugin.id}`"
             pri-link
           >
-            插件设置
-          </router-link>页面
+            {{ $t('pluginAdjust.pluginSettings') }}
+          </router-link>
         </q-item-label>
       </q-list>
       <hint-card
         mt="250px"
-        v-if="!assistantPlugin.infos.length && !assistantPlugin.tools.length && !assistantPlugin.actions.length && !plugin.promptVars?.length"
+        v-if="!assistantPlugin.infos.length && !assistantPlugin.tools.length && !assistantPlugin.resources.length && !plugin.promptVars?.length"
         img-url="/emotions/nachoneko/7.webp"
-        message="这个插件没有可配置的项目"
+        :message="$t('pluginAdjust.noConfigurableItems')"
       />
     </q-page>
   </q-page-container>
@@ -193,6 +134,7 @@ import HintCard from 'src/components/HintCard.vue'
 import ErrorNotFound from 'src/pages/ErrorNotFound.vue'
 import ViewCommonHeader from 'src/components/ViewCommonHeader.vue'
 import { useSetTitle } from 'src/composables/set-title'
+import { useI18n } from 'vue-i18n'
 
 defineEmits(['toggle-drawer'])
 
@@ -218,5 +160,6 @@ const apiMap = computed(() => {
   return val
 })
 
-useSetTitle(computed(() => plugin.value && `插件功能 - ${plugin.value.title}`))
+const { t } = useI18n()
+useSetTitle(computed(() => plugin.value && `${t('pluginAdjust.pluginFunction')} - ${plugin.value.title}`))
 </script>

@@ -1,14 +1,20 @@
-import { GradioFixedInput, GradioManifestEndpoint, GradioPluginManifest, GradioApiInput, HuggingPluginManifest, Plugin, PluginApi, PluginData, PluginsData } from './types'
-import { defaultAvatar, parsePageRange, parseSeconds } from './functions'
-import { createHeadersWithPluginSettings, LobeChatPluginManifest } from '@lobehub/chat-plugin-sdk'
+import { GradioFixedInput, GradioManifestEndpoint, GradioPluginManifest, GradioApiInput, HuggingPluginManifest, Plugin, PluginApi, PluginData, PluginsData, McpPluginDump, McpPluginManifest, Avatar } from './types'
+import { base64ToArrayBuffer, defaultAvatar, parsePageRange, parseSeconds } from './functions'
+import { createHeadersWithPluginSettings, LobeChatPluginManifest, PluginSchema } from '@lobehub/chat-plugin-sdk'
 import { Boolean as TBoolean, Number as TNumber, Object as TObject, Optional as TOptional, String as TString } from '@sinclair/typebox'
-import { Client } from '@gradio/client'
+import { Client as GradioClient } from '@gradio/client'
 import { AudioEncoderSupported, extractAudioBlob } from './audio-process'
 import { Parser } from 'expr-eval'
 import { parseDoc } from './doc-parse'
 import { corsFetch } from './cors-fetch'
 import { DocParseBaseURL } from './config'
 import artifacts from './artifacts-plugin'
+import { CallToolResult, GetPromptResult, ReadResourceResult } from '@modelcontextprotocol/sdk/types.js'
+import { fetch, IsTauri } from './platform-api'
+import { getClient } from './mcp-client'
+import { i18n } from 'src/boot/i18n'
+
+const { t } = i18n.global
 
 const timePlugin: Plugin = {
   id: 'aiaw-time',
@@ -18,8 +24,8 @@ const timePlugin: Plugin = {
     {
       type: 'tool',
       name: 'getTime',
-      description: '获取当前的时间和日期',
-      prompt: '获取当前的时间和日期',
+      description: t('plugins.time.description'),
+      prompt: t('plugins.time.prompt'),
       parameters: TObject({}),
       async execute() {
         return [{
@@ -31,8 +37,8 @@ const timePlugin: Plugin = {
   ],
   fileparsers: [],
   settings: TObject({}),
-  title: '时间和日期',
-  description: '让 AI 获取当前的时间和日期（没什么用。可用于测试工具调用是否正常）'
+  title: t('plugins.time.title'),
+  description: t('plugins.time.description')
 }
 
 const calculatorPrompt =
@@ -151,7 +157,7 @@ const calculatorPlugin: Plugin = {
   apis: [{
     type: 'tool',
     name: 'evaluate',
-    description: '计算一个数学表达式',
+    description: t('plugins.calculator.description'),
     prompt: calculatorPrompt,
     parameters: TObject({
       expression: TString({ description: calculatorExpressionPrompt }),
@@ -166,8 +172,8 @@ const calculatorPlugin: Plugin = {
   }],
   fileparsers: [],
   settings: TObject({}),
-  title: '计算器',
-  description: '提供一个计算器，让 AI 能够完成更加复杂的计算'
+  title: t('plugins.calculator.title'),
+  description: t('plugins.calculator.description')
 }
 
 function buildLobePlugin(manifest: LobeChatPluginManifest, available: boolean): Plugin {
@@ -252,7 +258,7 @@ function buildGradioPlugin(manifest: GradioPluginManifest, available: boolean): 
   }
   async function predict(endpoint: GradioManifestEndpoint, args, settings) {
     const options = settings._hfToken ? { hf_token: settings._hfToken } : undefined
-    const app = await Client.connect(manifest.baseUrl, options)
+    const app = await GradioClient.connect(manifest.baseUrl, options)
     const { data } = await app.predict(endpoint.path, { ...settings[endpoint.name], ...args })
     return await Promise.all(endpoint.outputIdxs.map(async i => {
       const d = data[i]
@@ -273,9 +279,10 @@ function buildGradioPlugin(manifest: GradioPluginManifest, available: boolean): 
     }))
   }
   const infos: PluginApi[] = manifest.endpoints.filter(e => e.type === 'info').map(e => {
-    const { name, description } = e
+    const { name, description, infoType } = e
     return {
-      type: 'tool',
+      type: 'info',
+      infoType: infoType ?? 'prompt-var',
       name,
       description,
       prompt: description,
@@ -294,21 +301,6 @@ function buildGradioPlugin(manifest: GradioPluginManifest, available: boolean): 
       prompt: description,
       parameters: buildHuggingParams(e.inputs),
       showComponents,
-      async execute(args, settings) {
-        return await predict(e, args, settings)
-      }
-    }
-  })
-  const actions: PluginApi[] = manifest.endpoints.filter(e => e.type === 'action').map(e => {
-    const { name, description, showComponents, autoExecute } = e
-    return {
-      type: 'action',
-      name,
-      description,
-      prompt: description,
-      parameters: buildHuggingParams(e.inputs),
-      showComponents,
-      autoExecute,
       async execute(args, settings) {
         return await predict(e, args, settings)
       }
@@ -342,10 +334,154 @@ function buildGradioPlugin(manifest: GradioPluginManifest, available: boolean): 
     promptVars,
     noRoundtrip,
     settings: TObject(settings),
-    apis: [...infos, ...tools, ...actions],
+    apis: [...infos, ...tools],
     fileparsers,
     author: manifest.author,
     homepage: manifest.homepage
+  }
+}
+
+function buildMcpPlugin(dump: McpPluginDump, available: boolean): Plugin {
+  const resourceToResultItem = (resource, name?) => resource.text ? {
+    type: 'text' as const,
+    name,
+    contentText: `<resource uri="${resource.uri}">\n${resource.text}\n</resource>`
+  } : {
+    type: 'file' as const,
+    name,
+    contentBuffer: base64ToArrayBuffer(resource.blob as string),
+    mimeType: resource.mimeType
+  }
+  const { id, title, description, transport, noRoundtrip, author, homepage } = dump
+  const tools: PluginApi[] = dump.tools.map(tool => ({
+    type: 'tool',
+    name: tool.name,
+    description: tool.description,
+    prompt: tool.description,
+    parameters: tool.inputSchema as PluginSchema,
+    async execute(args, settings) {
+      const client = await getClient(id, { type: transport.type, ...settings })
+      const res: CallToolResult = await client.callTool({
+        name: tool.name,
+        arguments: args
+      })
+      return res.content.map(i => {
+        if (i.type === 'text') {
+          return {
+            type: 'text' as const,
+            contentText: i.text
+          }
+        } else if (i.type === 'image') {
+          return {
+            type: 'file' as const,
+            contentBuffer: base64ToArrayBuffer(i.data),
+            mimeType: i.mimeType
+          }
+        } else {
+          // type: 'resource'
+          return resourceToResultItem(i.resource)
+        }
+      })
+    }
+  }))
+  const resources: PluginApi[] = dump.resources.map(resource => {
+    const { name, description, uri } = resource
+    return {
+      type: 'info',
+      infoType: 'resource',
+      name,
+      description,
+      parameters: TObject({}),
+      async execute(args, settings) {
+        const client = await getClient(id, { type: transport.type, ...settings })
+        const res: ReadResourceResult = await client.readResource({ uri })
+        return res.contents.map(c => resourceToResultItem(c, name))
+      }
+    }
+  })
+  const prompts: PluginApi[] = dump.prompts.map(prompt => {
+    const { name, description } = prompt
+    const params: Record<string, any> = {}
+    prompt.arguments.forEach(arg => {
+      const t = TString({ title: arg.name, description: arg.description })
+      params[arg.name] = arg.required ? t : TOptional(t)
+    })
+    return {
+      type: 'info',
+      infoType: 'prompt',
+      name,
+      description,
+      parameters: TObject(params),
+      async execute(args, settings) {
+        const client = await getClient(id, { type: transport.type, ...settings })
+        const res: GetPromptResult = await client.getPrompt({ name, arguments: args })
+        return res.messages.map(m => {
+          const { content } = m
+          if (content.type === 'text') {
+            return {
+              type: 'text',
+              name,
+              contentText: content.text
+            }
+          } else if (content.type === 'image') {
+            return {
+              type: 'file',
+              name,
+              contentBuffer: base64ToArrayBuffer(content.data),
+              mimeType: content.mimeType
+            }
+          } else {
+            // type: 'resource'
+            return resourceToResultItem(content.resource, content.resource.uri)
+          }
+        })
+      }
+    }
+  })
+  let settings: Record<string, any>
+  if (transport.type === 'stdio') {
+    const env: Record<string, any> = {}
+    settings = {
+      command: TString({ title: t('plugins.mcp.runCommand') }),
+      cwd: TOptional(TString({ title: t('plugins.mcp.cwd') }))
+    }
+    if (transport.env) {
+      for (const key in transport.env) {
+        env[key] = TString()
+      }
+      settings.env = TObject(env)
+    }
+  } else {
+    settings = {
+      url: TString({ title: 'SSE URL' })
+    }
+  }
+  return {
+    id,
+    type: 'mcp',
+    title,
+    description,
+    available: available && IsTauri,
+    settings: TObject(settings),
+    apis: [...tools, ...resources, ...prompts],
+    fileparsers: [],
+    noRoundtrip,
+    author,
+    homepage
+  }
+}
+
+async function dumpMcpPlugin(manifest: McpPluginManifest): Promise<McpPluginDump> {
+  const client = await getClient(manifest.id, manifest.transport)
+  const capabilities = client.getServerCapabilities()
+  const { tools } = capabilities.tools ? await client.listTools() : { tools: [] }
+  const { resources } = capabilities.resources ? await client.listResources() : { resources: [] }
+  const res = capabilities.prompts ? await client.listPrompts() : { prompts: [] }
+  return {
+    ...manifest,
+    tools,
+    resources,
+    prompts: res.prompts
   }
 }
 
@@ -381,6 +517,19 @@ function gradioDefaultData(manifest: GradioPluginManifest): PluginData {
     }
   })
   return { settings, avatar: manifest.avatar, fileparsers }
+}
+
+function mcpDefaultData(manifest: McpPluginManifest): PluginData {
+  const { transport } = manifest
+  const settings = transport.type === 'stdio' ? {
+    command: transport.command,
+    cwd: transport.cwd,
+    env: transport.env
+  } : {
+    url: transport.url
+  }
+  const avatar = manifest.avatar as Avatar ?? defaultAvatar(manifest.title[0].toUpperCase())
+  return { settings, avatar, fileparsers: {} }
 }
 
 const huggingIconsMap = {
@@ -448,14 +597,14 @@ function huggingToGradio(manifest: HuggingPluginManifest): GradioPluginManifest 
 
 const whisperPluginManifest: GradioPluginManifest = {
   id: 'aiaw-whisper',
-  title: '语音识别：Whisper',
-  description: '上传音频文件，通过 Whisper 模型将语音转换为文字',
+  title: t('plugins.whisper.title'),
+  description: t('plugins.whisper.description'),
   baseUrl: 'https://mrfakename-fast-whisper-turbo.hf.space',
   avatar: { type: 'icon', icon: 'sym_o_mic', hue: 100 },
   endpoints: [{
     type: 'fileparser',
     name: 'transcribe',
-    description: '将语音转换为文字',
+    description: t('plugins.whisper.transcribe.description'),
     path: '/transcribe',
     inputs: [{
       name: 'audio',
@@ -463,7 +612,7 @@ const whisperPluginManifest: GradioPluginManifest = {
       paramType: 'file'
     }, {
       name: 'task',
-      description: '任务类型',
+      description: t('plugins.whisper.taskType'),
       type: 'str',
       paramType: 'fixed',
       value: 'transcribe'
@@ -481,21 +630,21 @@ const videoTranscriptPlugin: Plugin = {
   apis: [],
   fileparsers: [{
     name: 'transcribe',
-    description: '将视频转换为文字',
+    description: t('plugins.videoTranscript.transcribe.description'),
     async execute({ file, range }, settings) {
-      if (!AudioEncoderSupported) throw new Error('当前浏览器不支持音频编码。建议使用最新版的 Chrome/Edge 浏览器。')
+      if (!AudioEncoderSupported) throw new Error(t('plugins.videoTranscript.audioEncoderError'))
       const rg = range ? range.split('-').map(parseSeconds) : undefined
       const audioBlob = await extractAudioBlob(file, rg as [number, number])
       return await whisperPlugin.fileparsers[0].execute({ file: audioBlob }, settings)
     },
     rangeInput: {
-      label: '时间范围',
+      label: t('plugins.videoTranscript.rangeInput.label'),
       hint: 'XX:XX-XX:XX'
     }
   }],
   settings: TObject({}),
-  title: '视频转文字',
-  description: '提取视频中的音频，再将其转换为文字。以向 AI 提问视频内容'
+  title: t('plugins.videoTranscript.title'),
+  description: t('plugins.videoTranscript.description')
 }
 
 const fluxPluginManifest: GradioPluginManifest = {
@@ -553,8 +702,8 @@ const fluxPluginManifest: GradioPluginManifest = {
     icon: 'camera'
   }),
   noRoundtrip: true,
-  title: '图像生成: FLUX',
-  description: '让 AI 调用 FLUX 模型生成图像。通过 🤗 Spaces 调用，因此是免费的'
+  title: t('plugins.flux.title'),
+  description: t('plugins.flux.description')
 }
 
 const fluxPlugin: Plugin = buildGradioPlugin(fluxPluginManifest, true)
@@ -611,14 +760,14 @@ const emotionsPlugin: Plugin = {
   apis: [],
   fileparsers: [],
   settings: TObject({}),
-  title: '表情包',
-  description: '让 AI 在回答中使用表情包，使回答更生动',
+  title: t('plugins.emotions.title'),
+  description: t('plugins.emotions.description'),
   prompt: emotionsPrompt,
   promptVars: [
     {
       id: 'displayWidth',
       name: 'displayWidth',
-      label: '显示大小',
+      label: t('plugins.emotions.displayWidth.label'),
       type: 'number',
       default: 100
     }
@@ -632,9 +781,9 @@ const mermaidPlugin: Plugin = {
   apis: [],
   fileparsers: [],
   settings: TObject({}),
-  title: 'Mermaid 图表',
-  description: '让 AI 在回答中使用 Mermaid 语法创建图表',
-  prompt: '在回答中，如果需要绘制图表，你可以直接使用 mermaid 语法创建图表，它们能够被正常渲染。'
+  title: t('plugins.mermaid.title'),
+  description: t('plugins.mermaid.description'),
+  prompt: t('plugins.mermaid.prompt')
 }
 
 const docParsePlugin: Plugin = {
@@ -644,7 +793,7 @@ const docParsePlugin: Plugin = {
   apis: [],
   fileparsers: [{
     name: 'parse',
-    description: '解析文档内容',
+    description: t('plugins.docParse.parse.description'),
     async execute({ file, range }, settings) {
       const docs = await parseDoc(file, {
         language: settings.ocrLanguage,
@@ -656,15 +805,15 @@ const docParsePlugin: Plugin = {
       }]
     },
     rangeInput: {
-      label: '页码范围',
-      hint: '例：1-3,5'
+      label: t('plugins.docParse.rangeInput.label'),
+      hint: t('plugins.docParse.rangeInput.hint')
     }
   }],
   settings: TObject({
-    ocrLanguage: TString({ title: 'OCR 语言' })
+    ocrLanguage: TString({ title: t('plugins.docParse.ocrLanguage') })
   }),
-  title: '文档解析',
-  description: '解析文档（PDF、Word、Excel、PPT 等）内容，并转换为 Markdown 文本'
+  title: t('plugins.docParse.title'),
+  description: t('plugins.docParse.description')
 }
 
 const defaultData: PluginsData = {
@@ -715,9 +864,12 @@ export {
   calculatorPlugin,
   buildLobePlugin,
   buildGradioPlugin,
+  buildMcpPlugin,
+  dumpMcpPlugin,
   huggingToGradio,
   lobeDefaultData,
   gradioDefaultData,
+  mcpDefaultData,
   defaultData,
   videoTranscriptPlugin,
   whisperPlugin,

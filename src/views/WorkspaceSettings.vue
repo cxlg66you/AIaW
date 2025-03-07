@@ -1,16 +1,15 @@
 <template>
   <view-common-header @toggle-drawer="$emit('toggle-drawer')">
     <q-toolbar-title>
-      工作区设置
+      {{ $t('workspaceSettings.title') }}
     </q-toolbar-title>
-    <q-space />
   </view-common-header>
   <q-page-container>
     <q-page bg-sur>
       <q-list>
         <q-item>
           <q-item-section>
-            默认助手
+            {{ $t('workspaceSettings.defaultAssistant') }}
           </q-item-section>
           <q-item-section side>
             <q-select
@@ -37,7 +36,7 @@
           @click="pickAvatar"
         >
           <q-item-section>
-            工作区图标
+            {{ $t('workspaceSettings.avatar') }}
           </q-item-section>
           <q-item-section side>
             <a-avatar :avatar="workspace.avatar" />
@@ -45,7 +44,7 @@
         </q-item>
         <q-item>
           <q-item-section avatar>
-            主页内容
+            {{ $t('workspaceSettings.homeContent') }}
           </q-item-section>
           <q-item-section pl-4>
             <q-input
@@ -59,10 +58,16 @@
       </q-list>
       <q-separator spaced />
       <q-item-label header>
-        工作区变量
+        {{ $t('workspaceSettings.variables') }}
       </q-item-label>
-      <workspace-vars-input
+      <vars-input
         v-model="workspace.vars"
+        :input-props="{
+          filled: true,
+          autogrow: true,
+          clearale: true,
+          placeholder: $t('workspaceSettings.inputPlaceholder')
+        }"
       />
     </q-page>
   </q-page-container>
@@ -79,8 +84,11 @@ import ViewCommonHeader from 'src/components/ViewCommonHeader.vue'
 import AAvatar from 'src/components/AAvatar.vue'
 import { useQuasar } from 'quasar'
 import PickAvatarDialog from 'src/components/PickAvatarDialog.vue'
-import WorkspaceVarsInput from 'src/components/WorkspaceVarsInput.vue'
+import VarsInput from 'src/components/VarsInput.vue'
 import { useSetTitle } from 'src/composables/set-title'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 defineEmits(['toggle-drawer'])
 
@@ -107,5 +115,5 @@ function pickAvatar() {
   }).onOk(avatar => { workspace.value.avatar = avatar })
 }
 
-useSetTitle(computed(() => `工作区设置 - ${workspace.value?.name}`))
+useSetTitle(computed(() => `${t('workspaceSettings.title')} - ${workspace.value?.name}`))
 </script>

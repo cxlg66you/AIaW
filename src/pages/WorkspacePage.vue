@@ -57,7 +57,7 @@
                 dense
                 round
                 icon="sym_o_close"
-                title="关闭"
+                :title="$t('workspacePage.closeArtifact')"
                 size="sm"
                 text-out
                 @click.prevent.stop="closeArtifact(artifact)"
@@ -71,7 +71,7 @@
             dense
             round
             icon="sym_o_close"
-            title="关闭全部 Artifacts"
+            :title="$t('workspacePage.closeAllArtifacts')"
             text-on-sur-var
             @click="closeAllArtifacts"
           />
@@ -100,7 +100,7 @@
             icon="sym_o_home"
             :to="`/workspaces/${id}`"
             :class="{'route-active': $route.path === `/workspaces/${id}`}"
-            title="工作区主页"
+            :title="$t('workspacePage.workspaceHome')"
           />
           <q-btn
             flat
@@ -109,13 +109,14 @@
             icon="sym_o_settings"
             :to="`/workspaces/${id}/settings`"
             :class="{'route-active': $route.path === `/workspaces/${id}/settings`}"
-            title="工作区设置"
+            :title="$t('workspacePage.workspaceSettings')"
           />
         </div>
         <q-expansion-item
-          label="助手"
+          :label="$t('workspacePage.assistants')"
           header-class="text-lg"
-          default-opened
+          :model-value="workspace.listOpen.assistants"
+          @update:model-value="setListOpen('assistants', $event)"
         >
           <assistant-list
             my-2
@@ -126,6 +127,8 @@
           <q-separator />
           <q-expansion-item
             label="Artifacts"
+            :model-value="workspace.listOpen.artifacts"
+            @update:model-value="setListOpen('artifacts', $event)"
             header-class="text-lg"
             max-h="40vh"
             of-y-auto
@@ -134,12 +137,12 @@
               tip-key="artifacts-usage"
               rd-0
             >
-              可参考 <a
+              {{ $t('workspacePage.artifactsGuide') }} <a
                 href="https://docs.aiaw.app/usage/artifacts.html"
                 target="_blank"
                 pri-link
               >
-                Artifacts 使用指南
+                {{ $t('workspacePage.artifactsGuideLink') }}
               </a>
             </a-tip>
             <artifacts-list
@@ -152,7 +155,7 @@
               ml-2
               flat
               icon="sym_o_add"
-              label="创建"
+              :label="$t('workspacePage.create')"
               text-sec
               @click="createEmptyArtifact"
             />
@@ -160,7 +163,7 @@
               ml-2
               flat
               icon="sym_o_file_open"
-              label="选择文件"
+              :label="$t('workspacePage.selectFile')"
               text-sec
               @input="artifactFromFiles"
             />
@@ -168,9 +171,10 @@
         </template>
         <q-separator />
         <q-expansion-item
-          label="对话"
+          :label="$t('workspacePage.dialogs')"
           header-class="text-lg"
-          default-opened
+          :model-value="workspace.listOpen.dialogs"
+          @update:model-value="setListOpen('dialogs', $event)"
           flex-1
           of-y-auto
         >
@@ -187,6 +191,7 @@
 
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import AssistantList from 'src/components/AssistantList.vue'
 import DialogList from 'src/components/DialogList.vue'
 import ArtifactsList from 'src/components/ArtifactsList.vue'
@@ -210,6 +215,8 @@ import ArtifactItemIcon from 'src/components/ArtifactItemIcon.vue'
 import { useUserPerfsStore } from 'src/stores/user-perfs'
 import ATip from 'src/components/ATip.vue'
 
+const { t } = useI18n()
+
 const props = defineProps<{
   id: string
 }>()
@@ -228,15 +235,15 @@ const $q = useQuasar()
 const { createArtifact } = useCreateArtifact(workspace)
 function createEmptyArtifact() {
   $q.dialog({
-    title: '创建 Artifact',
+    title: t('workspacePage.createArtifact'),
     prompt: {
       model: '',
       type: 'text',
-      label: '名称',
+      label: t('workspacePage.name'),
       isValid: v => !!v.trim()
     },
     cancel: true,
-    ok: '创建',
+    ok: t('workspacePage.create'),
     ...dialogOptions
   }).onOk(name => {
     const language = getFileExt(name)
@@ -247,7 +254,7 @@ async function artifactFromFiles(files: File[]) {
   for (const file of files) {
     if (!await isTextFile(file)) {
       $q.notify({
-        message: `非文本文件：${file.name}`,
+        message: t('workspacePage.nonTextFile', { name: file.name }),
         color: 'negative'
       })
       continue
@@ -312,4 +319,10 @@ provide('rightDrawerAbove', rightDrawerAbove)
 provide('workspace', workspace)
 
 const { perfs } = useUserPerfsStore()
+
+function setListOpen(key: keyof Workspace['listOpen'], value: boolean) {
+  db.workspaces.update(workspace.value.id, {
+    listOpen: { ...workspace.value.listOpen, [key]: value }
+  } as Partial<Workspace>)
+}
 </script>

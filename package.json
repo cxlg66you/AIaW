@@ -1,6 +1,6 @@
 {
   "name": "aiaw",
-  "version": "0.0.1",
+  "version": "1.4.17",
   "description": "精心设计的 AI (LLM) 客户端。全功能，轻量级；支持多工作区、插件系统、跨平台、本地优先+实时云同步",
   "productName": "AI as Workspace",
   "author": "NitroRCr <i@krytro.com>",
@@ -13,29 +13,46 @@
     "build": "quasar build",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "sync-version": "node scripts/sync-version.js"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^0.0.51",
+    "@ai-sdk/anthropic": "^1.1.13",
     "@ai-sdk/azure": "^1.1.9",
     "@ai-sdk/cohere": "^1.1.5",
     "@ai-sdk/deepseek": "^0.1.7",
     "@ai-sdk/google": "^1.1.9",
     "@ai-sdk/groq": "^1.1.7",
     "@ai-sdk/mistral": "^1.1.6",
-    "@ai-sdk/openai": "^0.0.66",
+    "@ai-sdk/openai": "^1.1.15",
     "@ai-sdk/togetherai": "^0.0.5",
     "@ai-sdk/xai": "^1.1.6",
+    "@bradenmacdonald/s3-lite-client": "npm:@jsr/bradenmacdonald__s3-lite-client@^0.8.0",
+    "@capacitor/android": "^7.0.1",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/clipboard": "^7.0.0",
+    "@capacitor/core": "^7.0.1",
+    "@capacitor/ios": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.0",
+    "@capawesome/capacitor-live-update": "^7.1.0",
     "@cfworker/json-schema": "^2.0.1",
     "@chenfengyuan/vue-qrcode": "^2.0.0",
     "@gradio/client": "^1.7.1",
     "@lobehub/chat-plugin-sdk": "^1.32.4",
     "@material/material-color-utilities": "^0.3.0",
+    "@modelcontextprotocol/sdk": "^1.5.0",
     "@quasar/extras": "^1.16.12",
     "@sinclair/typebox": "^0.33.12",
+    "@tauri-apps/plugin-clipboard-manager": "~2",
+    "@tauri-apps/plugin-opener": "~2",
+    "@tauri-apps/plugin-os": "~2.2.0",
+    "@tauri-apps/plugin-process": "~2",
+    "@tauri-apps/plugin-shell": "~2.2.0",
+    "@tauri-apps/plugin-updater": "~2.5.0",
     "@vueuse/core": "^11.0.3",
     "@vueuse/rxjs": "^11.0.3",
-    "ai": "^4.1.18",
+    "ai": "^4.1.50",
+    "capacitor-stream-fetch": "^0.0.3",
     "codejar": "^4.2.0",
     "codejar-linenumbers": "^1.0.1",
     "dexie": "^4.0.11",
@@ -50,14 +67,16 @@
     "quasar": "^2.16.10",
     "register-service-worker": "^1.7.2",
     "vue": "^3.5.12",
-    "vue-i18n": "^9.14.0",
+    "vue-i18n": "^11.1.1",
     "vue-router": "^4.4.0",
     "webm-muxer": "^5.0.2",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.0.1",
     "@intlify/unplugin-vue-i18n": "^2.0.0",
-    "@quasar/app-vite": "2.0.0-beta.20",
+    "@quasar/app-vite": "^2.1.0",
+    "@tauri-apps/cli": "^2.2.7",
     "@types/node": "^20.16.1",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
@@ -86,5 +105,10 @@
     "node": "^24 || ^22 || ^20 || ^18",
     "npm": ">= 6.13.4",
     "yarn": ">= 1.21.1"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "sharp"
+    ]
   }
 }

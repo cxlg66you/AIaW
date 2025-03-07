@@ -1,10 +1,10 @@
 <template>
   <q-item>
-    <q-item-section>服务商</q-item-section>
+    <q-item-section>{{ $t('providerInputItems.provider') }}</q-item-section>
     <q-item-section side>
       <q-select
         class="w-150px"
-        :model-value="model?.type"
+        :model-value="provider?.type"
         @update:model-value="switchProvider"
         :options="providerOptions"
         emit-value
@@ -35,9 +35,9 @@
     </q-item-section>
   </q-item>
   <json-input
-    v-if="model"
-    :schema="ProviderTypes.find(p => p.name === model.type).settings"
-    v-model="model.settings"
+    v-if="provider"
+    :schema="providerType.settings"
+    v-model="provider.settings"
     component="item"
     lazy
     :input-props="{
@@ -51,17 +51,19 @@ import { ProviderTypes } from 'src/utils/values'
 import JsonInput from './JsonInput.vue'
 import { Provider } from 'src/utils/types'
 import AAvatar from 'src/components/AAvatar.vue'
+import { computed } from 'vue'
 
-const model = defineModel<Provider>()
+const provider = defineModel<Provider>()
 const providerOptions = ProviderTypes.map(p => ({
   label: p.label,
   value: p.name
 }))
+const providerType = computed(() => ProviderTypes.find(p => p.name === provider.value?.type))
 function switchProvider(type: string) {
   if (type) {
-    model.value = { type, settings: ProviderTypes.find(p => p.name === type).initialSettings }
+    provider.value = { type, settings: ProviderTypes.find(p => p.name === type).initialSettings }
   } else {
-    model.value = null
+    provider.value = null
   }
 }
 </script>
