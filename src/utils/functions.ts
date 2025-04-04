@@ -1,5 +1,5 @@
 import { Hct, hexFromArgb } from '@material/material-color-utilities'
-import { Avatar, PlatformEnabled } from './types'
+import { Artifact, Avatar, PlatformEnabled } from './types'
 import { Platform } from 'quasar'
 
 function randomHash(digits = 64) {
@@ -33,6 +33,9 @@ function genId() {
 }
 function idTimestamp(id: string) {
   return parseInt(id.slice(0, 9), 32)
+}
+function idDateString(id: string) {
+  return new Date(idTimestamp(id)).toLocaleString()
 }
 
 function JSONEqual(a, b) {
@@ -90,9 +93,13 @@ function displayLength(text: string) {
   return length
 }
 function textBeginning(text: string, length = 10) {
-  if (cjkReg.test(text.slice(0, length))) length /= 2.5
-  if (text.length < length) return text
-  return text.slice(0, length) + '…'
+  let res = ''
+  for (const i of text) {
+    res += i
+    length -= cjkReg.test(i) ? 2 : 1
+    if (length <= 0) return res + '…'
+  }
+  return res
 }
 
 function parsePageRange(range: string) {
@@ -122,6 +129,91 @@ function isPlatformEnabled(platform: PlatformEnabled) {
   return false
 }
 
+function getFileExt(filename: string) {
+  return filename.match(/\.(\w+)$/)?.[1]
+}
+
+function saveArtifactChanges(artifact: Artifact): Partial<Artifact> {
+  return {
+    versions: [
+      ...artifact.versions.slice(0, artifact.currIndex + 1),
+      {
+        date: new Date(),
+        text: artifact.tmp
+      }
+    ],
+    currIndex: artifact.currIndex + 1
+  }
+}
+function restoreArtifactChanges(artifact: Artifact): Partial<Artifact> {
+  return {
+    tmp: artifact.versions[artifact.currIndex].text
+  }
+}
+
+function blobToBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+function artifactUnsaved(artifact: Artifact) {
+  return artifact.tmp !== artifact.versions[artifact.currIndex].text
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const base64WithoutPrefix = base64.split(',').pop() || base64
+  const binaryString = atob(base64WithoutPrefix)
+
+  const len = binaryString.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+
+  return bytes.buffer
+}
+
+function removeUndefinedProps(obj) {
+  if (typeof obj !== 'object' || obj === null) return
+
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      if (typeof obj[key] === 'object' && obj[key] !== null) {
+        removeUndefinedProps(obj[key])
+      }
+      if (obj[key] === undefined) delete obj[key]
+    }
+  }
+}
+
+/*
+    cyrb53 (c) 2018 bryc (github.com/bryc)
+    License: Public domain (or MIT if needed). Attribution appreciated.
+    A fast and simple 53-bit string hash function with decent collision resistance.
+    Largely inspired by MurmurHash2/3, but with a focus on speed/simplicity.
+*/
+function cyrb53(str: string, seed = 0) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed
+  for (let i = 0, ch; i < str.length; i++) {
+    ch = str.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507)
+  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507)
+  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0)
+}
+
+function hash53(str: string, seed = 0) {
+  return cyrb53(str, seed).toString(16)
+}
+
 export {
   randomHash,
   escapeRegex,
@@ -129,6 +221,7 @@ export {
   hctToHex,
   genId,
   idTimestamp,
+  idDateString,
   JSONEqual,
   mimeTypeMatch,
   isTextFile,
@@ -141,5 +234,14 @@ export {
   pageFhStyle,
   almostEqual,
   isPlatformEnabled,
-  textBeginning
+  textBeginning,
+  getFileExt,
+  saveArtifactChanges,
+  restoreArtifactChanges,
+  blobToBase64,
+  base64ToArrayBuffer,
+  artifactUnsaved,
+  removeUndefinedProps,
+  cyrb53,
+  hash53
 }

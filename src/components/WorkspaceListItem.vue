@@ -4,7 +4,7 @@
     :label="item.name"
     :content-inset-level="0.5"
     item-rd
-    :header-class="{ 'route-active': item.id === selected }"
+    :header-class="[{ 'route-active': item.id === selected }, 'py-1.5 min-h-0']"
     @update:model-value="accept === 'folder' && (selected = item.id)"
     v-model="expanded"
   >
@@ -25,32 +25,32 @@
         <q-list style="min-width: 100px">
           <menu-item
             icon="sym_o_edit"
-            label="重命名"
+            :label="$t('workspaceListItem.rename')"
             @click="renameItem(item)"
           />
           <menu-item
             icon="sym_o_interests"
-            label="更换图标"
+            :label="$t('workspaceListItem.changeIcon')"
             @click="changeAvatar(item)"
           />
           <menu-item
             icon="sym_o_add"
-            label="新建工作区"
+            :label="$t('workspaceListItem.newWorkspace')"
             @click="addWorkspace(item.id)"
           />
           <menu-item
             icon="sym_o_create_new_folder"
-            label="新建文件夹"
+            :label="$t('workspaceListItem.newFolder')"
             @click="addFolder(item.id)"
           />
           <menu-item
             icon="sym_o_move_item"
-            label="移动至"
+            :label="$t('workspaceListItem.moveTo')"
             @click="moveItem(item, [item.id])"
           />
           <menu-item
             icon="sym_o_delete"
-            label="删除"
+            :label="$t('workspaceListItem.delete')"
             @click="deleteItem(item)"
             hover:text-err
           />
@@ -75,6 +75,8 @@
     @click="selected = item.id"
     :class="{ 'route-active': item.id === selected }"
     item-rd
+    py-1.5
+    min-h-0
   >
     <q-item-section
       avatar
@@ -90,22 +92,22 @@
       <q-list style="min-width: 100px">
         <menu-item
           icon="sym_o_edit"
-          label="重命名"
+          :label="$t('workspaceListItem.rename')"
           @click="renameItem(item)"
         />
         <menu-item
           icon="sym_o_interests"
-          label="更换图标"
+          :label="$t('workspaceListItem.changeIcon')"
           @click="changeAvatar(item)"
         />
         <menu-item
           icon="sym_o_move_item"
-          label="移动至"
+          :label="$t('workspaceListItem.moveTo')"
           @click="moveItem(item)"
         />
         <menu-item
           icon="sym_o_delete"
-          label="删除"
+          :label="$t('workspaceListItem.delete')"
           @click="deleteItem(item)"
           hover:text-err
         />

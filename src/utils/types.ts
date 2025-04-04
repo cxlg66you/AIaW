@@ -1,5 +1,6 @@
 import { LobeChatPluginManifest, PluginSchema } from '@lobehub/chat-plugin-sdk'
-import { Any, Array, Boolean, Literal, Number, Object, Optional, Static, String, Union } from '@sinclair/typebox'
+import { Prompt, Resource, Tool } from '@modelcontextprotocol/sdk/types.js'
+import { Any, Array, Boolean, Literal, Null, Number, Object, Optional, Static, String, TSchema, Union } from '@sinclair/typebox'
 import { LanguageModelUsage } from 'ai'
 
 interface ModelSettings {
@@ -14,7 +15,7 @@ interface ModelSettings {
   seed?: number
 }
 
-type PromptVarValue = string | boolean | string[]
+type PromptVarValue = string | number | boolean | string[]
 
 interface PromptVar {
   id: string
@@ -59,7 +60,8 @@ type Avatar = SvgAvatar | TextAvatar | ImageAvatar | UrlAvatar | IconAvatar
 
 const ProviderSchema = Object({
   type: String(),
-  settings: Object(undefined)
+  settings: Object(undefined),
+  options: Optional(Object(undefined))
 })
 type Provider = Static<typeof ProviderSchema>
 interface ProviderType {
@@ -76,18 +78,19 @@ interface AvatarImage {
   contentBuffer: ArrayBuffer
   mimeType: string
 }
-interface StoredItem {
-  id: string
+interface ApiResultItem {
   type: 'text' | 'file' | 'quote'
-  dialogId: string
-  references: number
   contentText?: string
   contentBuffer?: ArrayBuffer
   name?: string
   mimeType?: string
 }
+interface StoredItem extends ApiResultItem {
+  id: string
+  dialogId: string
+  references: number
+}
 type StoredItemId = StoredItem['id']
-type ApiResultItem = Omit<StoredItem, 'dialogId' | 'id' | 'references'>
 
 interface UserMessageContent {
   type: 'user-message'
@@ -98,6 +101,7 @@ interface UserMessageContent {
 interface AssistantMessageContent {
   type: 'assistant-message'
   text: string
+  reasoning?: string
 }
 
 interface AssistantToolContent {
@@ -110,18 +114,7 @@ interface AssistantToolContent {
   error?: string
 }
 
-interface AssistantActionContent {
-  type: 'assistant-action'
-  pluginId: string
-  name: string
-  args
-  text?: string
-  result?: StoredItemId[]
-  status: 'streaming' | 'aborted' | 'ready' | 'calling' | 'failed' | 'completed',
-  error?: string
-}
-
-type MessageContent = UserMessageContent | AssistantMessageContent | AssistantToolContent | AssistantActionContent
+type MessageContent = UserMessageContent | AssistantMessageContent | AssistantToolContent
 
 class ApiCallError extends Error {}
 
@@ -130,6 +123,7 @@ interface AssistantPluginInfo {
   enabled: boolean
   args
 }
+type AssistantPluginResource = AssistantPluginInfo
 
 interface AssistantPluginTool {
   name: string
@@ -151,7 +145,7 @@ interface AssistantPlugin {
   enabled: boolean
   infos: AssistantPluginInfo[]
   tools: AssistantPluginTool[]
-  actions: AssistantPluginAction[]
+  resources: AssistantPluginResource[]
   vars: Record<string, PromptVarValue>
 }
 
@@ -160,9 +154,10 @@ interface AssistantPlugins {
 }
 
 interface PluginApi {
-  type: 'info' | 'tool' | 'action'
+  type: 'info' | 'tool'
+  infoType?: 'resource' | 'prompt' | 'prompt-var'
   name: string
-  description: string
+  description?: string
   prompt?: string
   parameters: PluginSchema
   showComponents?: string[]
@@ -182,7 +177,7 @@ interface PluginFileparser {
 
 interface Plugin {
   id: string
-  type: 'builtin' | 'lobechat' | 'gradio'
+  type: 'builtin' | 'lobechat' | 'gradio' | 'mcp'
   available: boolean
   apis: PluginApi[]
   fileparsers: PluginFileparser[]
@@ -192,6 +187,8 @@ interface Plugin {
   promptVars?: PromptVar[]
   settings: PluginSchema
   noRoundtrip?: boolean
+  author?: string
+  homepage?: string
 }
 
 interface InstalledLobePlugin {
@@ -266,6 +263,7 @@ interface GradioManifestAction {
 }
 interface GradioManifestInfo {
   type: 'info'
+  infoType?: 'resource' | 'prompt' | 'prompt-var'
   name: string
   description: string
   path: string
@@ -284,6 +282,37 @@ interface GradioPluginManifest {
   avatar: Avatar
   endpoints: GradioManifestEndpoint[]
   noRoundtrip?: boolean
+  author?: string
+  homepage?: string
+}
+const TransportConfSchema = Union([
+  Object({
+    type: Literal('stdio'),
+    command: String(),
+    env: Optional(Object(undefined)),
+    cwd: Optional(String())
+  }),
+  Object({
+    type: Literal('sse'),
+    url: String()
+  })
+])
+type TransportConf = Static<typeof TransportConfSchema>
+const McpPluginManifestSchema = Object({
+  id: String(),
+  title: String(),
+  transport: TransportConfSchema,
+  description: Optional(String()),
+  avatar: Optional(Object(undefined)),
+  noRoundtrip: Optional(Boolean()),
+  author: Optional(String()),
+  homepage: Optional(String())
+})
+type McpPluginManifest = Static<typeof McpPluginManifestSchema>
+interface McpPluginDump extends McpPluginManifest {
+  tools: Tool[]
+  resources: Resource[]
+  prompts: Prompt[]
 }
 const GradioPluginManifestSchema = Object({
   id: String(),
@@ -322,6 +351,7 @@ const LobePluginManifestSchema = Object({
   type: Optional(Union([Literal('default'), Literal('markdown')]))
 })
 type HuggingPluginManifest = Static<typeof HuggingPluginManifestSchema>
+type PluginManifest = LobeChatPluginManifest | GradioPluginManifest | HuggingPluginManifest | McpPluginManifest
 interface InstalledGradioPlugin {
   id: string
   key: string
@@ -329,8 +359,14 @@ interface InstalledGradioPlugin {
   available: boolean
   manifest: GradioPluginManifest
 }
-type InstalledPlugin = InstalledLobePlugin | InstalledGradioPlugin
-
+interface InstalledMcpPlugin {
+  id: string
+  key: string
+  type: 'mcp'
+  available: boolean
+  manifest: McpPluginDump
+}
+type InstalledPlugin = InstalledLobePlugin | InstalledGradioPlugin | InstalledMcpPlugin
 interface PluginData {
   settings
   avatar: Avatar
@@ -368,6 +404,11 @@ interface Workspace {
   indexContent: string
   defaultAssistantId?: string
   lastDialogId?: string
+  listOpen: {
+    assistants: boolean
+    artifacts: boolean
+    dialogs: boolean
+  }
 }
 
 interface Dialog {
@@ -410,33 +451,42 @@ interface Assistant {
   promptRole: 'system' | 'user' | 'assistant'
   contextNum?: number
   stream: boolean
+  description?: string
+  author?: string
+  homepage?: string
 }
 
+const TSOptional = <T extends TSchema>(schema: T) => Optional(Union([Null(), schema]))
 const MarketAssistantSchema = Object({
   name: String(),
   avatar: Object(undefined),
-  description: String(),
-  prompt: String(),
-  promptVars: Optional(Array(Object(undefined))),
-  promptTemplate: Optional(String()),
-  model: Optional(Object(undefined)),
-  modelSettings: Optional(Object(undefined))
+  description: TSOptional(String()),
+  prompt: TSOptional(String()),
+  promptVars: TSOptional(Array(Object(undefined))),
+  promptTemplate: TSOptional(String()),
+  model: TSOptional(Object(undefined)),
+  modelSettings: TSOptional(Object(undefined)),
+  author: TSOptional(String()),
+  homepage: TSOptional(String())
 })
 type MarketAssistant = Static<typeof MarketAssistantSchema>
 
-interface CanvasVersion {
+interface ArtifactVersion {
   date: Date
   text: string
 }
 
-interface Canvas {
+interface Artifact {
   id: string
   name: string
   workspaceId: string
-  versions: CanvasVersion[]
+  versions: ArtifactVersion[]
   currIndex: number
   readable: boolean
   writable: boolean
+  open: boolean
+  language?: string
+  tmp: string
 }
 
 interface StoredReactive {
@@ -458,10 +508,17 @@ interface ShortcutKey {
 
 type PlatformEnabled = 'always' | 'desktop-only' | 'mobile-only' | 'never'
 
+interface ConvertArtifactOptions {
+  name?: string
+  lang?: string
+  reserveOriginal: boolean
+}
+
 export {
   ApiCallError,
   HuggingPluginManifestSchema,
   GradioPluginManifestSchema,
+  McpPluginManifestSchema,
   LobePluginManifestSchema,
   MarketAssistantSchema,
   ProviderSchema
@@ -475,7 +532,6 @@ export type {
   UserMessageContent,
   AssistantMessageContent,
   AssistantToolContent,
-  AssistantActionContent,
   MessageContent,
   PluginApi,
   Plugin,
@@ -491,7 +547,7 @@ export type {
   Dialog,
   Message,
   Assistant,
-  Canvas,
+  Artifact,
   StoredReactive,
   StoredItem,
   StoredItemId,
@@ -516,11 +572,16 @@ export type {
   GradioManifestTool,
   GradioManifestEndpoint,
   HuggingPluginManifest,
+  PluginManifest,
   InstalledPlugin,
   Model,
   ModelInputTypes,
   MarketAssistant,
   OrderItem,
   ShortcutKey,
-  PlatformEnabled
+  PlatformEnabled,
+  ConvertArtifactOptions,
+  McpPluginDump,
+  McpPluginManifest,
+  TransportConf
 }

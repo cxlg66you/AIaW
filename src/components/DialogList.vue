@@ -13,7 +13,7 @@
         <q-icon name="sym_o_add_comment" />
       </q-item-section>
       <q-item-section>
-        新建对话
+        {{ $t('dialogList.newDialog') }}
       </q-item-section>
     </q-item>
     <div p="x-4 y-2">
@@ -22,14 +22,14 @@
         outlined
         v-model="filter"
         clearable
-        placeholder="搜索对话..."
+        :placeholder="$t('dialogList.searchPlaceholder')"
       />
     </div>
     <q-item
       v-for="dialog in filteredDialogs"
       :key="dialog.id"
       clickable
-      :to="`/workspaces/${workspace.id}/dialogs/${dialog.id}`"
+      :to="{ path: `/workspaces/${workspace.id}/dialogs/${dialog.id}`, query: $route.query }"
       active-class="bg-sec-c text-on-sec-c"
       item-rd
       min-h="40px"
@@ -43,23 +43,23 @@
         <q-list style="min-width: 100px">
           <menu-item
             icon="sym_o_edit"
-            label="修改标题"
-            @click="renameItem(dialog.id, dialog.name)"
+            :label="$t('dialogList.renameTitle')"
+            @click="renameItem(dialog)"
           />
           <menu-item
             icon="sym_o_auto_fix"
-            label="总结标题"
+            :label="$t('dialogList.summarizeDialog')"
             @click="$router.push(`/workspaces/${workspace.id}/dialogs/${dialog.id}#genTitle`)"
           />
           <menu-item
             icon="sym_o_move_item"
-            label="移动至"
-            @click="moveItem(dialog.id)"
+            :label="$t('dialogList.moveTo')"
+            @click="moveItem(dialog)"
           />
           <menu-item
             icon="sym_o_delete"
-            label="删除"
-            @click="deleteItem(dialog.id)"
+            :label="$t('dialogList.delete')"
+            @click="deleteItem(dialog)"
             hover:text-err
           />
         </q-list>
@@ -75,12 +75,14 @@ import { caselessIncludes, isPlatformEnabled } from 'src/utils/functions'
 import { Dialog, Workspace } from 'src/utils/types'
 import { dialogOptions } from 'src/utils/values'
 import { computed, inject, ref, Ref, toRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import SelectWorkspaceDialog from './SelectWorkspaceDialog.vue'
 import { useCreateDialog } from 'src/composables/create-dialog'
 import MenuItem from './MenuItem.vue'
 import { useUserPerfsStore } from 'src/stores/user-perfs'
 import { useListenKey } from 'src/composables/listen-key'
 
+const { t } = useI18n()
 const workspace: Ref<Workspace> = inject('workspace')
 const dialogs: Ref<Dialog[]> = inject('dialogs')
 const filter = ref(null)
@@ -95,14 +97,14 @@ async function addItem() {
   await createDialog()
 }
 
-function renameItem(id, oldName) {
+function renameItem({ id, name }) {
   $q.dialog({
-    title: '重命名',
-    message: '请输入新名称：',
+    title: t('dialogList.renameTitle'),
     prompt: {
-      model: oldName,
+      model: name,
       type: 'text',
-      isValid: v => v.trim() && v !== oldName
+      label: t('dialogList.title'),
+      isValid: v => v.trim() && v !== name
     },
     cancel: true,
     ...dialogOptions
@@ -110,7 +112,7 @@ function renameItem(id, oldName) {
     db.dialogs.update(id, { name: newName.trim() })
   })
 }
-function moveItem(id) {
+function moveItem({ id }) {
   $q.dialog({
     component: SelectWorkspaceDialog,
     componentProps: {
@@ -120,13 +122,13 @@ function moveItem(id) {
     db.dialogs.update(id, { workspaceId })
   })
 }
-function deleteItem(id) {
+function deleteItem({ id, name }) {
   $q.dialog({
-    title: '删除对话',
-    message: '确定要删除对话吗？',
+    title: t('dialogList.deleteConfirmTitle'),
+    message: t('dialogList.deleteConfirmMessage', { name }),
     cancel: true,
     ok: {
-      label: '删除',
+      label: t('dialogList.deleteConfirmOk'),
       color: 'err',
       flat: true
     },

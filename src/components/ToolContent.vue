@@ -15,7 +15,7 @@
             {{ plugin.title }}<code bg-sur-c-high>{{ content.name }}</code>
           </q-item-label>
           <q-item-label caption>
-            工具调用
+            {{ $t('toolContent.toolCall') }}
           </q-item-label>
         </q-item-section>
         <q-item-section side>
@@ -38,8 +38,7 @@
       <template #default>
         <md-preview
           :model-value="contentMd"
-          preview-theme="vuepress"
-          :theme="$q.dark.isActive ? 'dark' : 'light'"
+          v-bind="mdPreviewProps"
           bg-sur-c-low
         />
       </template>
@@ -55,16 +54,14 @@
         <md-preview
           v-if="['markdown', 'textbox'].includes(component)"
           :model-value="itemMap[content.result[index]].contentText"
-          preview-theme="vuepress"
-          :theme="$q.dark.isActive ? 'dark' : 'light'"
+          v-bind="mdPreviewProps"
           bg-sur-c-low
           rd-md
         />
         <md-preview
           v-else-if="['json', 'code'].includes(component)"
           :model-value="wrapCode(itemMap[content.result[index]].contentText, component === 'json' ? 'json' : '')"
-          preview-theme="vuepress"
-          :theme="$q.dark.isActive ? 'dark' : 'light'"
+          v-bind="mdPreviewProps"
           bg-sur-c-low
           rd-md
         />
@@ -89,6 +86,10 @@ import { MdPreview } from 'md-editor-v3'
 import { wrapCode } from 'src/utils/functions'
 import MessageImage from './MessageImage.vue'
 import MessageAudio from './MessageAudio.vue'
+import { useMdPreviewProps } from 'src/composables/md-preview-props'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   content: AssistantToolContent
@@ -100,14 +101,14 @@ const api = computed(() => plugin.value?.apis.find(a => a.name === props.content
 const pluginData = computed(() => pluginsStore.data[props.content.pluginId])
 
 const contentTemplate =
-`### 调用参数
+`### ${t('toolContent.callParams')}
 
 \`\`\`json
 {{ content.args | json: 2 }}
 \`\`\`
 
 {%- if result %}
-### 调用结果
+### ${t('toolContent.callResult')}
 
 \`\`\`json
 {{ result | json: 2 }}
@@ -115,7 +116,7 @@ const contentTemplate =
 {%- endif %}
 
 {%- if content.error %}
-### 错误信息
+### ${t('toolContent.errorMessage')}
 
 {{ content.error }}
 {%- endif %}
@@ -132,4 +133,6 @@ const contentMd = computed(() => {
 })
 
 const itemMap = inject<ComputedRef>('itemMap')
+
+const mdPreviewProps = useMdPreviewProps()
 </script>

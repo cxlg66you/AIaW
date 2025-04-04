@@ -4,9 +4,8 @@
     back-to="."
   >
     <q-toolbar-title>
-      插件设置
+      {{ $t('pluginSettings.title') }}
     </q-toolbar-title>
-    <q-space />
   </view-common-header>
   <q-page-container v-if="plugin">
     <q-page
@@ -15,27 +14,47 @@
     >
       <q-list v-if="pluginsStore.ready">
         <q-item-label header>
-          信息
+          {{ $t('pluginSettings.info') }}
         </q-item-label>
         <q-item>
-          <q-item-section>名称</q-item-section>
+          <q-item-section>{{ $t('pluginSettings.name') }}</q-item-section>
           <q-item-section side>
             {{ plugin.title }}
           </q-item-section>
         </q-item>
         <q-item>
-          <q-item-section avatar>
-            描述
+          <q-item-section min-w="fit">
+            {{ $t('pluginSettings.description') }}
           </q-item-section>
           <q-item-section side>
-            {{ plugin.description }}
+            <q-item-label caption>
+              {{ plugin.description }}
+            </q-item-label>
+          </q-item-section>
+        </q-item>
+        <q-item v-if="plugin.author">
+          <q-item-section>{{ $t('pluginSettings.author') }}</q-item-section>
+          <q-item-section side>
+            {{ plugin.author }}
+          </q-item-section>
+        </q-item>
+        <q-item v-if="plugin.homepage">
+          <q-item-section>{{ $t('pluginSettings.homepage') }}</q-item-section>
+          <q-item-section side>
+            <a
+              pri-link
+              :href="plugin.homepage"
+              target="_blank"
+            >
+              {{ plugin.homepage }}
+            </a>
           </q-item-section>
         </q-item>
         <q-item
           clickable
           @click="pickAvatar"
         >
-          <q-item-section>图标</q-item-section>
+          <q-item-section>{{ $t('pluginSettings.icon') }}</q-item-section>
           <q-item-section
             side
             text-on-sur
@@ -47,11 +66,11 @@
           <q-separator spaced />
           <q-item>
             <q-item-section text-sec>
-              文件解析
+              {{ $t('pluginSettings.fileParsing') }}
             </q-item-section>
             <q-item-section side>
               <div>
-                启用
+                {{ $t('pluginSettings.enable') }}
               </div>
             </q-item-section>
           </q-item>
@@ -67,7 +86,7 @@
             </q-item-section>
             <q-item-section items-end>
               <list-input
-                label="MIME 类型"
+                :label="$t('pluginSettings.mimeType')"
                 class="xs:w-200px sm:w-250px"
                 filled
                 dense
@@ -82,7 +101,7 @@
         </template>
         <q-separator spaced />
         <q-item-label header>
-          设置
+          {{ $t('pluginSettings.settings') }}
         </q-item-label>
         <json-input
           :schema="plugin.settings"
@@ -132,5 +151,7 @@ function pickAvatar() {
   })
 }
 
-useSetTitle(computed(() => plugin.value && `插件设置 - ${plugin.value.title}`))
+import { useI18n } from 'vue-i18n'
+const { t } = useI18n()
+useSetTitle(computed(() => plugin.value && `${t('pluginSettings.title')} - ${plugin.value.title}`))
 </script>

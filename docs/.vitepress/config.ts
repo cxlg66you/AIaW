@@ -17,16 +17,21 @@ export default defineConfig({
         text: '使用文档',
         items: [
           { text: '功能概览', link: '/usage/' },
+          { text: 'Artifacts', link: '/usage/artifacts' },
           { text: '文件解析', link: '/usage/file-parse' },
           { text: '多模态', link: '/usage/multimodal' },
           { text: '跨平台', link: '/usage/cross-platform' },
           { text: '插件系统', link: '/usage/plugins' },
+          { text: 'MCP 插件', link: '/usage/mcp' },
           { text: '插件配置与开发', link: '/usage/plugin-dev' },
           { text: '提示词变量', link: '/usage/prompt-vars' },
           { text: '工作区', link: '/usage/workspaces' },
+          { text: '助手', link: '/usage/assistants' },
           { text: '个性化设置', link: '/usage/personalization' },
           { text: '数据与同步', link: '/usage/data-sync' },
-          { text: '模型服务', link: '/usage/model-service' }
+          { text: '模型服务', link: '/usage/model-service' },
+          { text: '中转站对接', link: '/usage/share-link' },
+          { text: '常见问题', link: '/usage/common-issues' }
         ]
       },
       {
@@ -64,6 +69,9 @@ export default defineConfig({
         },
         detailedView: true
       }
+    },
+    outline: {
+      level: [2, 3]
     }
   },
   head: [

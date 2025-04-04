@@ -1,16 +1,17 @@
 import Dexie from 'dexie'
 import { defaultAvatar, genId } from './functions'
-import { Workspace, Folder, Dialog, Message, Assistant, Canvas, StoredReactive, InstalledPlugin, AvatarImage, StoredItem } from './types'
-import { AssistantDefaultPrompt, exampleWsIndexContent } from './templates'
+import { Workspace, Folder, Dialog, Message, Assistant, Artifact, StoredReactive, InstalledPlugin, AvatarImage, StoredItem } from './types'
+import { AssistantDefaultPrompt, ExampleWsIndexContent } from './templates'
 import dexieCloud, { DexieCloudTable } from 'dexie-cloud-addon'
 import { DexieDBURL } from './config'
+import { i18n } from 'src/boot/i18n'
 
 type Db = Dexie & {
   workspaces: DexieCloudTable<Workspace | Folder, 'id'>
   dialogs: DexieCloudTable<Dialog, 'id'>
   messages: DexieCloudTable<Message, 'id'>
   assistants: DexieCloudTable<Assistant, 'id'>
-  canvases: DexieCloudTable<Canvas, 'id'>
+  artifacts: DexieCloudTable<Artifact, 'id'>
   installedPluginsV2: DexieCloudTable<InstalledPlugin, 'id'>
   reactives: DexieCloudTable<StoredReactive, 'key'>
   avatarImages: DexieCloudTable<AvatarImage, 'id'>
@@ -27,12 +28,13 @@ if (DexieDBURL) {
     nameSuffix: false
   })
 }
-db.version(4).stores({
+db.version(5).stores({
   workspaces: 'id, type, parentId',
   dialogs: 'id, workspaceId',
   messages: 'id, type, dialogId',
   assistants: 'id, workspaceId',
-  canvases: 'id, workspaceId',
+  canvases: 'id, workspaceId', // deprecated
+  artifacts: 'id, workspaceId',
   installedPluginsV2: 'key, id',
   reactives: 'key',
   avatarImages: 'id',
@@ -48,24 +50,31 @@ const defaultModelSettings = {
   maxRetries: 1
 }
 
+const { t } = i18n.global
+
 db.on.populate.subscribe(() => {
   db.on.ready.subscribe((db: Db) => {
     const initialWorkspaceId = genId()
     const initialAssistantId = genId()
     db.workspaces.add({
       id: initialWorkspaceId,
-      name: '示例工作区',
+      name: t('db.exampleWorkspace'),
       avatar: { type: 'icon', icon: 'sym_o_menu_book' },
       type: 'workspace',
       parentId: '$root',
       prompt: '',
       defaultAssistantId: initialAssistantId,
-      indexContent: exampleWsIndexContent,
-      vars: {}
+      indexContent: ExampleWsIndexContent,
+      vars: {},
+      listOpen: {
+        assistants: true,
+        artifacts: false,
+        dialogs: true
+      }
     } as Workspace)
     db.assistants.add({
       id: initialAssistantId,
-      name: '默认助手',
+      name: t('db.defaultAssistant'),
       avatar: defaultAvatar('AI'),
       workspaceId: initialWorkspaceId,
       prompt: '',
@@ -92,6 +101,17 @@ db.assistants.hook('reading', assistant => {
   assistant.promptRole ??= 'system'
   assistant.stream ??= true
   return assistant
+})
+// Migration to v1.4
+db.workspaces.hook('reading', workspace => {
+  if (workspace.type === 'workspace') {
+    workspace.listOpen ??= {
+      assistants: true,
+      artifacts: false,
+      dialogs: true
+    }
+  }
+  return workspace
 })
 
 export { db, defaultModelSettings }

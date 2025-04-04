@@ -6,8 +6,9 @@
         :assistant
         v-if="dialog"
         text-base
-        dense
         item-rd
+        py-1
+        min-h-0
       />
       <q-menu>
         <q-list>
@@ -18,6 +19,8 @@
             :assistant="a"
             @click="dialog.assistantId = a.id"
             v-close-popup
+            py-1.5
+            min-h-0
           />
         </q-list>
       </q-menu>
@@ -48,7 +51,7 @@
               header
               pb-2
             >
-              助手模型
+              {{ $t('dialogView.assistantModel') }}
             </q-item-label>
             <model-item
               v-if="assistant.model"
@@ -64,7 +67,7 @@
               header
               pb-2
             >
-              全局默认
+              {{ $t('dialogView.globalDefault') }}
             </q-item-label>
             <model-item
               v-if="perfs.model"
@@ -80,19 +83,18 @@
             header
             py-2
           >
-            常用模型
+            {{ $t('dialogView.commonModels') }}
           </q-item-label>
           <a-tip
             tip-key="configure-common-models"
-            dense
             rd-0
           >
-            可以在 <router-link
+            {{ $t('dialogView.modelsConfigGuide1') }}<router-link
               to="/settings#ui"
               pri-link
             >
-              设置
-            </router-link> 中配置 常用模型
+              {{ $t('dialogView.settings') }}
+            </router-link> {{ $t('dialogView.modelsConfigGuide2') }}
           </a-tip>
           <model-item
             v-for="m of perfs.commonModelOptions"
@@ -136,10 +138,13 @@
             :model-value="dialog.msgRoute[index - 1] + 1"
             :message="messageMap[i]"
             :child-num="dialog.msgTree[chain[index - 1]].length"
+            :scroll-container
             @update:model-value="switchChain(index - 1, $event - 1)"
             @edit="edit(index)"
             @regenerate="regenerate(index)"
-            @quote="addInputItems([$event])"
+            @quote="quote"
+            @extract-artifact="extractArtifact(messageMap[i], ...$event)"
+            @rendered="messageMap[i].generatingSession && lockBottom()"
             pt-2
             pb-4
           />
@@ -223,6 +228,8 @@
         </div>
         <div
           flex
+          flex-wrap
+          justify-end
           text-sec
           items-center
         >
@@ -230,7 +237,7 @@
             v-if="model && mimeTypeMatch('image/webp', model.inputTypes.user)"
             flat
             icon="sym_o_image"
-            title="添加图片"
+            :title="$t('dialogView.addImage')"
             round
             @click="imageInput.click()"
           >
@@ -246,7 +253,7 @@
           <q-btn
             flat
             icon="sym_o_folder"
-            title="添加文件"
+            :title="$t('dialogView.addFile')"
             round
             @click="fileInput.click()"
           >
@@ -263,10 +270,25 @@
             v-if="assistant?.promptVars.length"
             flat
             icon="sym_o_tune"
-            :title="showVars ? '隐藏变量' : '显示变量'"
+            :title="showVars ? $t('dialogView.hideVars') : $t('dialogView.showVars')"
             round
             @click="showVars = !showVars"
             :class="{ 'text-ter': showVars }"
+          />
+          <model-options-btn
+            v-if="provider"
+            :provider-type="provider.type"
+            :model-name="model.name"
+            v-model="modelOptions"
+            flat
+            round
+          />
+          <add-info-btn
+            :plugins="activePlugins"
+            :assistant-plugins="assistant.plugins"
+            @add="addInputItems"
+            flat
+            round
           />
           <q-space />
           <div
@@ -285,7 +307,7 @@
               py-1
             >{{ activePlugins.length }}</code>
             <q-tooltip>
-              已启用插件
+              {{ $t('dialogView.enabledPlugins') }}
               <template
                 v-for="p of activePlugins"
                 :key="p.id"
@@ -309,13 +331,13 @@
               py-1
             >{{ usage.promptTokens }}+{{ usage.completionTokens }}</code>
             <q-tooltip>
-              上条消息 Token 消耗<br>
-              提示：{{ usage.promptTokens }}，补全：{{ usage.completionTokens }}
+              {{ $t('dialogView.messageTokens') }}<br>
+              {{ $t('dialogView.tokenPrompt') }}：{{ usage.promptTokens }}，{{ $t('dialogView.tokenCompletion') }}：{{ usage.completionTokens }}
             </q-tooltip>
           </div>
           <abortable-btn
             icon="sym_o_send"
-            label="发送"
+            :label="$t('dialogView.send')"
             @click="send"
             @abort="abortController?.abort()"
             :loading="!!messageMap[chain.at(-2)]?.generatingSession"
@@ -351,7 +373,7 @@
           outlined
           autogrow
           clearable
-          placeholder="输入聊天内容..."
+          :placeholder="$t('dialogView.chatPlaceholder')"
           @keydown.enter="onEnter"
           @paste="onTextPaste"
         />
@@ -365,17 +387,17 @@
 import { computed, inject, onUnmounted, provide, ref, Ref, toRaw, toRef, watch, nextTick } from 'vue'
 import { db } from 'src/utils/db'
 import { useLiveQueryWithDeps } from 'src/composables/live-query'
-import { almostEqual, escapeRegex, genId, isPlatformEnabled, isTextFile, mimeTypeMatch, pageFhStyle, textBeginning, wrapCode } from 'src/utils/functions'
+import { almostEqual, displayLength, genId, isPlatformEnabled, isTextFile, mimeTypeMatch, pageFhStyle, textBeginning, wrapCode, wrapQuote } from 'src/utils/functions'
 import { useAssistantsStore } from 'src/stores/assistants'
-import { streamText, CoreMessage, generateText, tool, jsonSchema } from 'ai'
+import { streamText, CoreMessage, generateText, tool, jsonSchema, StreamTextResult, GenerateTextResult } from 'ai'
 import { useModel } from 'src/composables/model'
 import { throttle, useQuasar } from 'quasar'
 import AssistantItem from 'src/components/AssistantItem.vue'
 import { useSystemModel } from 'src/composables/system-model'
-import { ActionMessage, GenDialogTitle, PluginsPrompt } from 'src/utils/templates'
+import { ExtractArtifactPrompt, ExtractArtifactResult, GenDialogTitle, NameArtifactPrompt, PluginsPrompt } from 'src/utils/templates'
 import sessions from 'src/utils/sessions'
 import PromptVarInput from 'src/components/PromptVarInput.vue'
-import { MessageContent, PluginApi, ApiCallError, Plugin, Dialog, Message, Workspace, UserMessageContent, StoredItem, ModelSettings, ApiResultItem } from 'src/utils/types'
+import { MessageContent, PluginApi, ApiCallError, Plugin, Dialog, Message, Workspace, UserMessageContent, StoredItem, ModelSettings, ApiResultItem, Artifact, ConvertArtifactOptions, AssistantMessageContent } from 'src/utils/types'
 import { usePluginsStore } from 'src/stores/plugins'
 import MessageItem from 'src/components/MessageItem.vue'
 import { scaleBlob } from 'src/utils/image-process'
@@ -398,6 +420,13 @@ import { MaxMessageFileSizeMB } from 'src/utils/config'
 import ATip from 'src/components/ATip.vue'
 import { useListenKey } from 'src/composables/listen-key'
 import { useSetTitle } from 'src/composables/set-title'
+import { useCreateArtifact } from 'src/composables/create-artifact'
+import artifactsPlugin from 'src/utils/artifacts-plugin'
+import ModelOptionsBtn from 'src/components/ModelOptionsBtn.vue'
+import AddInfoBtn from 'src/components/AddInfoBtn.vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   id: string
@@ -537,12 +566,12 @@ function onTextPaste(ev: ClipboardEvent) {
     const code = clipboardData.getData('text/plain')
       .replace(/\r\n/g, '\n')
       .replace(/\r/g, '\n')
-    if (!/\s/.test(code)) return
+    if (!/\n/.test(code)) return
     const data = clipboardData.getData('vscode-editor-data')
     const lang = JSON.parse(data).mode ?? ''
     if (lang === 'markdown') return
     const wrappedCode = wrapCode(code, lang)
-    document.execCommand('insertText', false, wrappedCode)
+    document.execCommand('insertText', false, '\n' + wrappedCode)
     ev.preventDefault()
   }
 }
@@ -561,7 +590,7 @@ function onPaste(ev: ClipboardEvent) {
       const text = clipboardData.getData('text/plain')
       addInputItems([{
         type: 'text',
-        name: `粘贴文本：${textBeginning(text, 10)}`,
+        name: t('dialogView.pastedText', { text: textBeginning(text, 12) }),
         contentText: text
       }])
     }
@@ -606,7 +635,7 @@ async function parseFiles(files: File[]) {
   }
   for (const file of supportedFiles) {
     if (file.size > MaxMessageFileSizeMB * 1024 * 1024) {
-      $q.notify({ message: `文件太大（>${MaxMessageFileSizeMB}MB）`, color: 'negative' })
+      $q.notify({ message: t('dialogView.fileTooLarge', { maxSize: MaxMessageFileSizeMB }), color: 'negative' })
       continue
     }
     const f = file.type.startsWith('image/') && file.size > 512 * 1024 ? await scaleBlob(file, 2048 * 2048) : file
@@ -625,6 +654,14 @@ async function parseFiles(files: File[]) {
   }).onOk((files: ApiResultItem[]) => {
     addInputItems(files)
   })
+}
+function quote(item: ApiResultItem) {
+  if (displayLength(item.contentText) > 200) {
+    addInputItems([item])
+  } else {
+    const { text } = inputMessageContent.value
+    updateInputText(text ? text + '\n' + wrapQuote(item.contentText) : wrapQuote(item.contentText))
+  }
 }
 async function addInputItems(items: ApiResultItem[]) {
   const storedItems = items.map(i => ({ ...i, id: genId(), dialogId: props.id, references: 0 }))
@@ -663,7 +700,7 @@ function getChainMessages() {
           content: [
             { type: 'text', text: content.text },
             ...content.items.map(id => itemMap.value[id]).map(i => {
-              if (i.contentText) {
+              if (i.contentText != null) {
                 if (i.type === 'file') {
                   return { type: 'text' as const, text: `<file_content filename="${i.name}">\n${i.contentText}\n</file_content>` }
                 } else if (i.type === 'quote') {
@@ -692,13 +729,13 @@ function getChainMessages() {
         })
       } else if (content.type === 'assistant-tool') {
         if (content.status !== 'completed') return
-        const { name, args, result } = content
+        const { name, args, result, pluginId } = content
         const id = genId()
         val.push({
           role: 'assistant',
           content: [{
             type: 'tool-call',
-            toolName: name,
+            toolName: `${pluginId}-${name}`,
             toolCallId: id,
             args
           }]
@@ -707,17 +744,10 @@ function getChainMessages() {
           role: 'tool',
           content: [{
             type: 'tool-result',
-            toolName: name,
+            toolName: `${pluginId}-${name}`,
             toolCallId: id,
-            result: result.map(id => itemMap.value[id])
-          }]
-        })
-      } else if (content.type === 'assistant-action') {
-        val.push({
-          role: 'assistant',
-          content: [{
-            type: 'text',
-            text: engine.parseAndRenderSync(ActionMessage, { action: content })
+            result: toToolResultContent(result.map(id => itemMap.value[id])),
+            experimental_content: toToolResultContent(result.map(id => itemMap.value[id]))
           }]
         })
       }
@@ -739,7 +769,7 @@ function getSystemPrompt(enabledPlugins) {
     return prompt.trim() ? prompt : undefined
   } catch (e) {
     console.error(e)
-    $q.notify({ message: '提示词解析失败，请检查助手提示词模板', color: 'negative' })
+    $q.notify({ message: t('dialogView.promptParseFailed'), color: 'negative' })
     throw e
   }
 }
@@ -763,25 +793,26 @@ const pluginsStore = usePluginsStore()
 
 const { callApi } = useCallApi({ workspace, dialog })
 
-const { sdkModel, model } = useModel(computed(() => assistant.value?.provider), computed(() => dialog.value?.modelOverride || assistant.value?.model))
+const modelOptions = ref({})
+const { sdkModel, provider, model } = useModel(computed(() => assistant.value?.provider), computed(() => dialog.value?.modelOverride || assistant.value?.model), modelOptions)
 const $q = useQuasar()
 const { data } = useUserDataStore()
 async function send() {
   if (!assistant.value) {
-    $q.notify({ message: '请设置助手', color: 'negative' })
+    $q.notify({ message: t('dialogView.errors.setAssistant'), color: 'negative' })
     return
   }
   if (!sdkModel.value) {
-    $q.notify({ message: '请配置服务商、模型或者登录', color: 'negative' })
+    $q.notify({ message: t('dialogView.errors.configModel'), color: 'negative' })
     return
   }
   if (!data.noobAlertDismissed && chain.value.length > 10 && dialogs.value.length < 3) {
     $q.dialog({
-      title: '是否需要新建对话？',
-      message: '一个新用户常见的误区是，始终在一个对话中提问，即使问题之间没有关联。\n实际上，当你问一个与前文无关的新问题时，就应该新建一个对话，以避免上下文的累计导致输入开销不断增大',
+      title: t('dialogView.noobAlert.title'),
+      message: t('dialogView.noobAlert.message'),
       persistent: true,
-      ok: '我会新建一个对话',
-      cancel: '我知道这些，无需提醒',
+      ok: t('dialogView.noobAlert.okBtn'),
+      cancel: t('dialogView.noobAlert.cancelBtn'),
       ...dialogOptions
     }).onCancel(() => {
       data.noobAlertDismissed = true
@@ -805,6 +836,7 @@ async function send() {
   perfs.autoGenTitle && chain.value.length === 4 && genTitle()
 }
 
+const artifacts = inject<Ref<Artifact[]>>('artifacts')
 const abortController = ref<AbortController>()
 async function stream(target, insert = false) {
   const settings: Partial<ModelSettings> = {}
@@ -814,7 +846,7 @@ async function stream(target, insert = false) {
       settings[key] = val
     }
   }
-  let messageContent: MessageContent = {
+  const messageContent: AssistantMessageContent = {
     type: 'assistant-message',
     text: ''
   }
@@ -851,7 +883,9 @@ async function stream(target, insert = false) {
     }
     contents.push(content)
     update()
-    const { result, error } = await callApi(plugin, api, args)
+    const { result: apiResult, error } = await callApi(plugin, api, args)
+    const result: StoredItem[] = apiResult.map(r => ({ ...r, id: genId(), dialogId: props.id, references: 0 }))
+    saveItems(result)
     if (error) {
       content.status = 'failed'
       content.error = error
@@ -864,7 +898,6 @@ async function stream(target, insert = false) {
   }
   const { plugins } = assistant.value
   const tools = {}
-  const actions = []
   const enabledPlugins = []
   let noRoundtrip = true
   await Promise.all(activePlugins.value.map(async p => {
@@ -886,61 +919,53 @@ async function stream(target, insert = false) {
           if (error) throw new ApiCallError(error)
           return result
         },
-        experimental_toToolResultContent(items: StoredItem[]) {
-          const val = []
-          for (const item of items) {
-            if (item.type === 'text') {
-              val.push({ type: 'text', text: item.contentText })
-            } else if (mimeTypeMatch(item.mimeType, model.value.inputTypes.tool)) {
-              val.push({ type: item.mimeType.startsWith('image/') ? 'image' : 'file', mimeType: item.mimeType, data: item.contentBuffer })
-            }
-          }
-          return val
-        }
+        experimental_toToolResultContent: toToolResultContent
       })
     })
     const pluginInfos = {}
     await Promise.all(plugin.infos.map(async api => {
       if (!api.enabled) return
       const a = p.apis.find(a => a.name === api.name)
+      if (a.infoType !== 'prompt-var') return
       try {
         pluginInfos[a.name] = await callApi(p, a, api.args)
       } catch (e) {
-        $q.notify({ message: `调用插件信息失败：${e.message}`, color: 'negative' })
+        $q.notify({ message: t('dialogView.callPluginInfoFailed', { message: e.message }), color: 'negative' })
       }
     }))
 
-    const pluginActions = []
-    plugin.actions.forEach(api => {
-      if (!api.enabled) return
-      const a = p.apis.find(a => a.name === api.name)
-      const { name, prompt } = a
-      actions.push({
-        pluginId: p.id,
-        name
-      })
-
-      pluginActions.push({
-        name,
-        prompt: engine.parseAndRenderSync(prompt, pluginVars)
-      })
-    })
     try {
       enabledPlugins.push({
         id: p.id,
-        prompt: p.prompt && engine.parseAndRenderSync(p.prompt, { ...pluginVars, infos: pluginInfos }),
-        actions: pluginActions
+        prompt: p.prompt && engine.parseAndRenderSync(p.prompt, { ...pluginVars, infos: pluginInfos })
       })
     } catch (e) {
-      $q.notify({ message: `插件「${p.title}」提示词模板解析失败`, color: 'negative' })
+      $q.notify({ message: t('dialogView.pluginPromptParseFailed', { title: p.title }), color: 'negative' })
     }
   }))
-
+  if (isPlatformEnabled(perfs.artifactsEnabled) && artifacts.value.some(a => a.open)) {
+    const { plugin, getPrompt, api } = artifactsPlugin
+    enabledPlugins.push({
+      id: plugin.id,
+      prompt: getPrompt(artifacts.value.filter(a => a.open)),
+      actions: []
+    })
+    tools[`${plugin.id}-${api.name}`] = tool({
+      description: api.prompt,
+      parameters: jsonSchema(api.parameters),
+      async execute(args) {
+        const { result, error } = await callTool(plugin, api, args)
+        if (error) throw new ApiCallError(error)
+        return result
+      },
+      experimental_toToolResultContent: toToolResultContent
+    })
+  }
   try {
     if (noRoundtrip) settings.maxSteps = 1
     abortController.value = new AbortController()
     const messages = getChainMessages()
-    const prompt = getSystemPrompt(enabledPlugins.filter(p => p.prompt || p.actions.length))
+    const prompt = getSystemPrompt(enabledPlugins.filter(p => p.prompt))
     prompt && messages.unshift({ role: assistant.value.promptRole, content: prompt })
     const params = {
       model: sdkModel.value,
@@ -949,77 +974,26 @@ async function stream(target, insert = false) {
       ...settings,
       abortSignal: abortController.value.signal
     }
-    let result
+    let result: StreamTextResult<any, any> | GenerateTextResult<any, any>
     if (assistant.value.stream) {
-      result = await streamText(params)
+      result = streamText(params)
       await db.messages.update(id, { status: 'streaming' })
-      for await (const textDelta of result.textStream) {
-        messageContent.text += textDelta
-        for (const action of actions) {
-          const tag = `${action.pluginId}-${action.name}`
-          const openReg = new RegExp(`<${escapeRegex(tag)} +(\\{.*\\}) *>\\n`)
-          const closeReg = new RegExp(`\\n</${escapeRegex(tag)} *>`)
-          const selfCloseReg = new RegExp(`<${escapeRegex(tag)} +(\\{.*\\}) */>`)
-          const openMatch = messageContent.text.match(openReg)
-          const closeMatch = messageContent.text.match(closeReg)
-          const selfCloseMatch = messageContent.text.match(selfCloseReg)
-          if (openMatch) {
-            if (messageContent.type !== 'assistant-message') continue
-            try {
-              const args = JSON.parse(openMatch[1])
-              const [prevText, currText] = messageContent.text.split(openMatch[0])
-              messageContent.text = prevText
-              messageContent = {
-                type: 'assistant-action',
-                pluginId: action.pluginId,
-                name: action.name,
-                args,
-                text: currText,
-                status: 'streaming'
-              }
-              contents.push(messageContent)
-            } catch (e) {
-              continue
-            }
-          } else if (closeMatch) {
-            if (messageContent.type !== 'assistant-action' || messageContent.name !== action.name) continue
-            const [prevText, currText] = messageContent.text.split(closeMatch[0])
-            messageContent.text = prevText
-            messageContent.status = 'ready'
-            messageContent = {
-              type: 'assistant-message',
-              text: currText
-            }
-            contents.push(messageContent)
-          } else if (selfCloseMatch) {
-            if (messageContent.type !== 'assistant-message') continue
-            try {
-              const args = JSON.parse(selfCloseMatch[1])
-              const [prevText, currText] = messageContent.text.split(selfCloseMatch[0])
-              messageContent.text = prevText
-              messageContent = {
-                type: 'assistant-action',
-                pluginId: action.pluginId,
-                name: action.name,
-                args,
-                status: 'ready'
-              }
-              contents.push(messageContent)
-              messageContent = {
-                type: 'assistant-message',
-                text: currText
-              }
-              contents.push(messageContent)
-            } catch (e) {
-              continue
-            }
-          }
+      lockingBottom.value = perfs.streamingLockBottom
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') {
+          messageContent.text += part.textDelta
+          update()
+        } else if (part.type === 'reasoning') {
+          messageContent.reasoning = (messageContent.reasoning ?? '') + part.textDelta
+          update()
+        } else if (part.type === 'error') {
+          throw part.error
         }
-        update()
       }
     } else {
       result = await generateText(params)
       messageContent.text = await result.text
+      messageContent.reasoning = await result.reasoning
     }
 
     const usage = await result.usage
@@ -1029,15 +1003,49 @@ async function stream(target, insert = false) {
     console.error(e)
     if (e.data?.error?.type === 'budget_exceeded') {
       $q.notify({
-        message: '模型服务额度不足',
+        message: t('dialogView.errors.insufficientQuota'),
         color: 'err-c',
         textColor: 'on-err-c',
-        actions: [{ label: '充值', color: 'on-sur', handler() { router.push('/account') } }]
+        actions: [{ label: t('dialogView.recharge'), color: 'on-sur', handler() { router.push('/account') } }]
       })
     }
     await db.messages.update(id, { contents, error: e.message, status: 'failed', generatingSession: null })
   }
+  perfs.artifactsAutoExtract && autoExtractArtifact()
+  lockingBottom.value = false
 }
+function toToolResultContent(items: StoredItem[]) {
+  const val = []
+  for (const item of items) {
+    if (item.type === 'text') {
+      val.push({ type: 'text', text: item.contentText })
+    } else if (mimeTypeMatch(item.mimeType, model.value.inputTypes.tool)) {
+      val.push({ type: item.mimeType.startsWith('image/') ? 'image' : 'file', mimeType: item.mimeType, data: item.contentBuffer })
+    }
+  }
+  return val
+}
+const lockingBottom = ref(false)
+let lastScrollTop
+function scrollListener() {
+  const container = scrollContainer.value
+  if (container.scrollTop < lastScrollTop) {
+    lockingBottom.value = false
+  }
+  lastScrollTop = container.scrollTop
+}
+function lockBottom() {
+  lockingBottom.value && scroll('bottom', 'auto')
+}
+watch(lockingBottom, val => {
+  if (val) {
+    lastScrollTop = scrollContainer.value.scrollTop
+    scrollContainer.value.addEventListener('scroll', scrollListener)
+  } else {
+    lastScrollTop = null
+    scrollContainer.value.removeEventListener('scroll', scrollListener)
+  }
+})
 const activePlugins = computed<Plugin[]>(() => pluginsStore.plugins.filter(p => p.available && assistant.value.plugins[p.id]?.enabled))
 const usage = computed(() => messageMap.value[chain.value.at(-2)]?.usage)
 
@@ -1051,10 +1059,10 @@ async function genTitle() {
         lang: 'zh-CN'
       })
     })
-    dialog.value.name = text
+    await db.dialogs.update(props.id, { name: text })
   } catch (e) {
     console.error(e)
-    $q.notify({ message: '总结对话失败，请检查系统助手设置', color: 'negative' })
+    $q.notify({ message: t('dialogView.summarizeFailed'), color: 'negative' })
   }
 }
 const route = useRoute()
@@ -1118,14 +1126,13 @@ function switchTo(target: 'prev' | 'next' | 'first' | 'last') {
   if (to < 0 || to >= num || to === curr) return
   switchChain(index, to)
 }
-function scroll(action: 'up' | 'down' | 'top' | 'bottom') {
+function scroll(action: 'up' | 'down' | 'top' | 'bottom', behavior: 'smooth' | 'auto' = 'smooth') {
   const { container, items } = getEls()
-
   if (action === 'top') {
-    container.scrollTo({ top: 0, behavior: 'smooth' })
+    container.scrollTo({ top: 0, behavior })
     return
   } else if (action === 'bottom') {
-    container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+    container.scrollTo({ top: container.scrollHeight, behavior })
     return
   }
 
@@ -1221,6 +1228,54 @@ if (isPlatformEnabled(perfs.enableShortcutKey)) {
   useListenKey(toRef(perfs, 'regenerateCurrKey'), () => regenerateCurr())
   useListenKey(toRef(perfs, 'editCurrKey'), () => editCurr())
   useListenKey(toRef(perfs, 'focusDialogInputKey'), () => focusInput())
+}
+
+async function genArtifactName(content: string, lang?: string) {
+  const { text } = await generateText({
+    model: systemModel.sdkModel.value,
+    prompt: engine.parseAndRenderSync(NameArtifactPrompt, { content, lang })
+  })
+  return text
+}
+const { createArtifact } = useCreateArtifact(workspace)
+async function extractArtifact(message: Message, text: string, pattern, options: ConvertArtifactOptions) {
+  const name = options.name || await genArtifactName(text, options.lang)
+  const id = await createArtifact({
+    name,
+    language: options.lang,
+    versions: [{
+      date: new Date(),
+      text
+    }],
+    tmp: text
+  })
+  if (options.reserveOriginal) return
+  const to = `> ${t('dialogView.convertedToArtifact')}: <router-link to="?openArtifact=${id}">${name}</router-link>\n`
+  const index = message.contents.findIndex(c => ['assistant-message', 'user-message'].includes(c.type))
+  const content = message.contents[index] as UserMessageContent | AssistantMessageContent
+  await db.messages.update(message.id, {
+    [`contents.${index}.text`]: content.text.replace(pattern, to) as any
+  })
+}
+async function autoExtractArtifact() {
+  const message = messageMap.value[chain.value.at(-2)]
+  const { text } = await generateText({
+    model: systemModel.sdkModel.value,
+    prompt: engine.parseAndRenderSync(ExtractArtifactPrompt, {
+      contents: chain.value.slice(-3, -1).map(id => messageMap.value[id].contents).flat()
+    })
+  })
+  const object: ExtractArtifactResult = JSON.parse(text)
+  if (!object.found) return
+  const reg = new RegExp(`(\`{3,}.*\\n)?(${object.regex})(\\s*\`{3,})?`)
+  const content = message.contents.find(c => c.type === 'assistant-message')
+  const match = content.text.match(reg)
+  if (!match) return
+  await extractArtifact(message, match[2], reg, {
+    name: object.name,
+    lang: object.language,
+    reserveOriginal: perfs.artifactsReserveOriginal
+  })
 }
 
 defineEmits(['toggle-drawer'])

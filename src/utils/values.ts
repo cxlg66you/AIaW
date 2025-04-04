@@ -10,9 +10,13 @@ import { createTogetherAI } from '@ai-sdk/togetherai'
 import { createCohere } from '@ai-sdk/cohere'
 import { createGroq } from '@ai-sdk/groq'
 import { createOllama } from 'ollama-ai-provider'
+import { createDeepSeek } from '@ai-sdk/deepseek'
+import { i18n } from 'src/boot/i18n'
+
+const { t } = i18n.global
 
 const commonSettings = {
-  baseURL: String({ title: 'API 地址', description: '默认为该服务商官方地址' }),
+  baseURL: String({ title: t('values.apiAddress'), description: t('values.defaultServiceAddress') }),
   apiKey: String({ title: 'API Key', format: 'password' })
 }
 const ProviderTypes: ProviderType[] = [
@@ -22,9 +26,9 @@ const ProviderTypes: ProviderType[] = [
     avatar: { type: 'svg', name: 'openai' },
     settings: Object({
       ...commonSettings,
-      baseURL: String({ title: 'API 地址', description: '默认为 OpenAI 官方地址', default: 'https://api.openai.com/v1' }),
-      organization: String({ title: '组织', description: 'OpenAI 组织；可选' }),
-      project: String({ title: '项目', description: 'OpenAI 项目；可选' })
+      baseURL: String({ title: t('values.apiAddress'), description: t('values.defaultOpenAIAddress'), default: 'https://api.openai.com/v1' }),
+      organization: String({ title: t('values.organization'), description: t('values.optional') }),
+      project: String({ title: t('values.project'), description: t('values.optional') })
     }),
     initialSettings: { compatibility: 'strict' },
     constructor: createOpenAI
@@ -35,8 +39,8 @@ const ProviderTypes: ProviderType[] = [
     avatar: { type: 'svg', name: 'microsoft-c' },
     settings: Object({
       ...commonSettings,
-      resourceName: String({ title: '资源名称' }),
-      apiVersion: String({ title: 'API 版本' })
+      resourceName: String({ title: t('values.resourceName') }),
+      apiVersion: String({ title: t('values.apiVersion') })
     }),
     initialSettings: {},
     constructor: createAzure
@@ -47,7 +51,7 @@ const ProviderTypes: ProviderType[] = [
     avatar: { type: 'svg', name: 'anthropic' },
     settings: Object({
       ...commonSettings,
-      baseURL: String({ title: 'API 地址', description: '默认为 Anthropic 官方地址', default: 'https://api.anthropic.com/v1' })
+      baseURL: String({ title: t('values.apiAddress'), description: t('values.defaultAnthropicAddress'), default: 'https://api.anthropic.com/v1' })
     }),
     initialSettings: {},
     constructor: createAnthropic
@@ -58,10 +62,18 @@ const ProviderTypes: ProviderType[] = [
     avatar: { type: 'svg', name: 'google-c' },
     settings: Object({
       ...commonSettings,
-      baseURL: String({ title: 'API 地址', description: '默认为 Google 官方地址', default: 'https://generativelanguage.googleapis.com/v1beta' })
+      baseURL: String({ title: t('values.apiAddress'), description: t('values.defaultGoogleAddress'), default: 'https://generativelanguage.googleapis.com/v1beta' })
     }),
     initialSettings: {},
     constructor: createGoogleGenerativeAI
+  },
+  {
+    name: 'deepseek',
+    label: 'DeepSeek',
+    avatar: { type: 'svg', name: 'deepseek-c' },
+    settings: Object(commonSettings),
+    initialSettings: {},
+    constructor: createDeepSeek
   },
   {
     name: 'mistral',
@@ -108,7 +120,7 @@ const ProviderTypes: ProviderType[] = [
     label: 'Ollama',
     avatar: { type: 'svg', name: 'ollama' },
     settings: Object({
-      baseURL: String({ title: 'API 地址', default: 'http://localhost:11434/api' })
+      baseURL: String({ title: t('values.apiAddress'), default: 'http://localhost:11434/api' })
     }),
     initialSettings: {},
     constructor: createOllama
@@ -129,7 +141,10 @@ const models: Model[] = [
   { name: 'o1-mini-2024-09-12', inputTypes: InputTypes.textOnly },
   { name: 'o1-preview', inputTypes: InputTypes.textOnly },
   { name: 'o1-preview-2024-09-12', inputTypes: InputTypes.textOnly },
+  { name: 'o3-mini', inputTypes: InputTypes.textOnly },
+  { name: 'o3-mini-2025-01-31', inputTypes: InputTypes.textOnly },
   { name: 'gpt-4o', inputTypes: InputTypes.commonVision },
+  { name: 'gpt-4o-2024-11-20', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-2024-08-06', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-2024-05-13', inputTypes: InputTypes.commonVision },
   { name: 'chatgpt-4o-latest', inputTypes: InputTypes.commonVision },
@@ -140,6 +155,7 @@ const models: Model[] = [
   { name: 'gpt-4o-mini', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-mini-2024-07-18', inputTypes: InputTypes.commonVision },
   { name: 'gpt-3.5-turbo', inputTypes: InputTypes.textOnly },
+  { name: 'claude-3-7-sonnet-20250219', inputTypes: InputTypes.claudePdf },
   { name: 'claude-3-5-sonnet-20241022', inputTypes: InputTypes.claudePdf },
   { name: 'claude-3-5-sonnet-20240620', inputTypes: InputTypes.claudeVision },
   { name: 'claude-3-5-haiku-20241022', inputTypes: InputTypes.textOnly },
@@ -148,14 +164,19 @@ const models: Model[] = [
   { name: 'claude-3-haiku-20240307', inputTypes: InputTypes.claudeVision },
   { name: 'gemini-1.5-pro', inputTypes: InputTypes.commonVision },
   { name: 'gemini-1.5-flash', inputTypes: InputTypes.commonVision },
+  { name: 'gemini-2.0-flash', inputTypes: InputTypes.gemini2 },
   { name: 'gemini-2.0-flash-exp', inputTypes: InputTypes.gemini2 },
   { name: 'gemini-2.0-flash-thinking-exp', inputTypes: InputTypes.commonVision },
-  { name: 'deepseek-chat', inputTypes: InputTypes.textOnly }
+  { name: 'deepseek-chat', inputTypes: InputTypes.textOnly },
+  { name: 'deepseek-reasoner', inputTypes: InputTypes.textOnly }
 ]
 const modelOptions = models.map(m => m.name)
 const dialogOptions = {
   color: 'primary'
 }
+
+const mdPreviewThemes = ['default', 'vuepress', 'github', 'mk-cute', 'smart-blue', 'cyanosis', 'arknights']
+const mdCodeThemes = ['atom', 'ally', 'github', 'gradient', 'kimbie', 'paraiso', 'qtcreator', 'stackoverflow']
 
 const codeExtensions = [
   'abap',
@@ -1710,4 +1731,14 @@ const materialSymbols = [
   'chalet'
 ]
 
-export { ProviderTypes, models, InputTypes, modelOptions, dialogOptions, codeExtensions, materialSymbols }
+export {
+  ProviderTypes,
+  models,
+  InputTypes,
+  modelOptions,
+  dialogOptions,
+  codeExtensions,
+  materialSymbols,
+  mdPreviewThemes,
+  mdCodeThemes
+}

@@ -3,10 +3,13 @@ import { defineStore } from 'pinia'
 import { useLiveQuery } from 'src/composables/live-query'
 import { persistentReactive } from 'src/composables/persistent-reactive'
 import { db } from 'src/utils/db'
-import { GradioPluginManifest, HuggingPluginManifest, InstalledPlugin, PluginsData } from 'src/utils/types'
-import { buildLobePlugin, timePlugin, defaultData, whisperPlugin, videoTranscriptPlugin, buildGradioPlugin, calculatorPlugin, huggingToGradio, fluxPlugin, lobeDefaultData, gradioDefaultData, emotionsPlugin, docParsePlugin, mermaidPlugin } from 'src/utils/plugins'
+import { GradioPluginManifest, HuggingPluginManifest, InstalledPlugin, McpPluginManifest, PluginsData } from 'src/utils/types'
+import { buildLobePlugin, timePlugin, defaultData, whisperPlugin, videoTranscriptPlugin, buildGradioPlugin, calculatorPlugin, huggingToGradio, fluxPlugin, lobeDefaultData, gradioDefaultData, emotionsPlugin, docParsePlugin, mermaidPlugin, mcpDefaultData, dumpMcpPlugin, buildMcpPlugin } from 'src/utils/plugins'
 import { computed } from 'vue'
 import { genId } from 'src/utils/functions'
+import artifacts from 'src/utils/artifacts-plugin'
+import { IsTauri } from 'src/utils/platform-api'
+import { useI18n } from 'vue-i18n'
 
 export const usePluginsStore = defineStore('plugins', () => {
   const installed = useLiveQuery(() => db.installedPluginsV2.toArray(), {
@@ -23,9 +26,11 @@ export const usePluginsStore = defineStore('plugins', () => {
     mermaidPlugin,
     docParsePlugin,
     timePlugin,
+    artifacts.plugin,
     ...installed.value.map(i => {
       if (i.type === 'lobechat') return buildLobePlugin(i.manifest, i.available)
-      else return buildGradioPlugin(i.manifest, i.available)
+      else if (i.type === 'gradio') return buildGradioPlugin(i.manifest, i.available)
+      else return buildMcpPlugin(i.manifest, i.available)
     })
   ])
 
@@ -65,6 +70,29 @@ export const usePluginsStore = defineStore('plugins', () => {
     await installGradioPlugin(huggingToGradio(manifest))
   }
 
+  const { t } = useI18n()
+  async function installMcpPlugin(manifest: McpPluginManifest) {
+    if (manifest.transport.type === 'stdio' && !IsTauri) throw new Error(t('stores.plugins.stdioRequireDesktop'))
+    const dump = await dumpMcpPlugin(manifest)
+    await db.transaction('rw', db.installedPluginsV2, db.reactives, async () => {
+      const plugin = await db.installedPluginsV2.where('id').equals(manifest.id).first()
+      if (plugin) {
+        await db.installedPluginsV2.update(plugin.key, { type: 'mcp', available: true, manifest: dump })
+      } else {
+        await db.installedPluginsV2.add({
+          id: manifest.id,
+          key: genId(),
+          type: 'mcp',
+          available: true,
+          manifest: dump
+        })
+      }
+      await db.reactives.update('#plugins-data', {
+        [`value.${manifest.id}`]: mcpDefaultData(manifest)
+      })
+    })
+  }
+
   async function uninstall(id) {
     await db.transaction('rw', db.installedPluginsV2, db.assistants, async () => {
       await db.installedPluginsV2.where('id').equals(id).modify({ available: false })
@@ -80,6 +108,7 @@ export const usePluginsStore = defineStore('plugins', () => {
     installLobePlugin,
     installHuggingPlugin,
     installGradioPlugin,
+    installMcpPlugin,
     uninstall
   }
 })

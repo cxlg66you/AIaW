@@ -1,3 +1,4 @@
+import { MdPreviewProps } from 'md-editor-v3'
 import { defineStore } from 'pinia'
 import { Dark, extend } from 'quasar'
 import { persistentReactive } from 'src/composables/persistent-reactive'
@@ -16,7 +17,7 @@ interface Perfs {
   commonModelOptions: string[]
   autoGenTitle: boolean
   sendKey: 'ctrl+enter' | 'shift+enter' | 'enter'
-  messageQuoteBtn: boolean
+  messageSelectionBtn: boolean
   codePasteOptimize: boolean
   dialogScrollBtn: PlatformEnabled
   enableShortcutKey: PlatformEnabled
@@ -32,7 +33,19 @@ interface Perfs {
   editCurrKey?: ShortcutKey
   createDialogKey?: ShortcutKey
   focusDialogInputKey?: ShortcutKey
+  saveArtifactKey?: ShortcutKey
   autoFocusDialogInput: PlatformEnabled
+  artifactsEnabled: PlatformEnabled
+  artifactsAutoExtract: boolean
+  artifactsAutoName: boolean
+  artifactsReserveOriginal: boolean
+  mdPreviewTheme: MdPreviewProps['previewTheme']
+  mdCodeTheme: MdPreviewProps['codeTheme']
+  mdNoMermaid: MdPreviewProps['noMermaid']
+  mdAutoFoldThreshold?: MdPreviewProps['autoFoldThreshold']
+  streamingLockBottom: boolean
+  messageCatalog: boolean
+  showWarnings: boolean
 }
 
 export const useUserPerfsStore = defineStore('user-perfs', () => {
@@ -50,18 +63,18 @@ export const useUserPerfsStore = defineStore('user-perfs', () => {
     },
     commonModelOptions: [
       'gpt-4o',
-      'gpt-4o-2024-08-06',
       'gpt-4o-mini',
-      'o1-mini',
+      'o3-mini',
+      'claude-3-7-sonnet-20250219',
       'claude-3-5-sonnet-20241022',
-      'claude-3-5-sonnet-20240620',
       'gemini-1.5-pro',
-      'gemini-1.5-flash',
-      'deepseek-chat'
+      'gemini-2.0-flash',
+      'deepseek-chat',
+      'deepseek-reasoner'
     ],
     autoGenTitle: true,
     sendKey: 'ctrl+enter',
-    messageQuoteBtn: true,
+    messageSelectionBtn: true,
     codePasteOptimize: true,
     dialogScrollBtn: 'always',
     enableShortcutKey: 'desktop-only',
@@ -73,7 +86,23 @@ export const useUserPerfsStore = defineStore('user-perfs', () => {
     switchNextKeyV2: { key: 'ArrowRight', withCtrl: true },
     switchFirstKey: { key: 'ArrowLeft', withShift: true },
     switchLastKey: { key: 'ArrowRight', withShift: true },
-    autoFocusDialogInput: 'desktop-only'
+    regenerateCurrKey: null,
+    editCurrKey: null,
+    createDialogKey: null,
+    focusDialogInputKey: null,
+    saveArtifactKey: { key: 'KeyS', withCtrl: true },
+    autoFocusDialogInput: 'desktop-only',
+    artifactsEnabled: 'desktop-only',
+    artifactsAutoExtract: false,
+    artifactsAutoName: false,
+    artifactsReserveOriginal: false,
+    mdPreviewTheme: 'vuepress',
+    mdCodeTheme: 'atom',
+    mdNoMermaid: false,
+    mdAutoFoldThreshold: null,
+    streamingLockBottom: true,
+    messageCatalog: true,
+    showWarnings: false
   }
   const [perfs, ready] = persistentReactive('#user-perfs', { ...defaultPerfs })
   watchEffect(() => {

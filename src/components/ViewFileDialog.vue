@@ -20,9 +20,7 @@
         <div v-if="file.contentText">
           <md-preview
             :model-value="markdown"
-            preview-theme="vuepress"
-            :theme="$q.dark.isActive ? 'dark' : 'light'"
-            :auto-fold-threshold="Infinity"
+            v-bind="mdPreviewProps"
             bg-sur-c-low
             max-h="70vh"
           />
@@ -31,7 +29,7 @@
           <q-list>
             <q-item>
               <q-item-section>
-                文件大小
+                {{ $t('viewFileDialog.fileSize') }}
               </q-item-section>
               <q-item-section side>
                 {{ sizeStr(file.contentBuffer.byteLength) }}
@@ -39,7 +37,7 @@
             </q-item>
             <q-item>
               <q-item-section>
-                文件类型
+                {{ $t('viewFileDialog.fileType') }}
               </q-item-section>
               <q-item-section side>
                 {{ file.mimeType }}
@@ -54,14 +52,14 @@
         <copy-btn
           v-if="file.contentText"
           flat
-          label="复制"
+          :label="$t('viewFileDialog.copy')"
           color="primary"
           :value="file.contentText"
         />
         <q-btn
           v-if="file.contentBuffer"
           flat
-          label="下载"
+          :label="$t('viewFileDialog.download')"
           color="primary"
           icon="sym_o_download"
           @click="download"
@@ -70,7 +68,7 @@
         <q-btn
           flat
           color="primary"
-          label="确定"
+          :label="$t('viewFileDialog.ok')"
           @click="onDialogOK"
         />
       </q-card-actions>
@@ -86,6 +84,7 @@ import { StoredItem } from 'src/utils/types'
 import { codeExtensions } from 'src/utils/values'
 import { computed } from 'vue'
 import CopyBtn from './CopyBtn.vue'
+import { useMdPreviewProps } from 'src/composables/md-preview-props'
 
 const props = defineProps<{
   file: StoredItem
@@ -117,4 +116,6 @@ const markdown = computed(() => {
 function download() {
   exportFile(props.file.name, props.file.contentBuffer)
 }
+
+const mdPreviewProps = useMdPreviewProps()
 </script>
