@@ -2,6 +2,8 @@ import { createOpenAI } from '@ai-sdk/openai'
 import { Model, ProviderType } from './types'
 import { Object, String } from '@sinclair/typebox'
 import { createAnthropic } from '@ai-sdk/anthropic'
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createAzure } from '@ai-sdk/azure'
 import { createMistral } from '@ai-sdk/mistral'
@@ -20,7 +22,8 @@ const OfficialBaseURLs = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com/v1',
   google: 'https://generativelanguage.googleapis.com/v1beta',
-  ollama: 'http://localhost:11434/api'
+  ollama: 'http://localhost:11434/api',
+  openrouter: 'https://openrouter.ai/api/v1'
 }
 const commonSettings = {
   baseURL: String({ title: t('values.apiAddress'), description: t('values.defaultServiceAddress') }),
@@ -96,6 +99,45 @@ const ProviderTypes: ProviderType[] = [
     constructor: createGoogleGenerativeAI
   },
   {
+    name: 'openai-compatible',
+    label: t('values.openaiCompatible'),
+    avatar: { type: 'svg', name: 'openai' },
+    settings: Object({
+      ...commonSettings,
+      baseURL: String({ title: t('values.apiAddress'), description: t('values.required') })
+    }),
+    initialSettings: {},
+    constructor: createOpenAICompatible,
+    getModelList: async (settings) => {
+      const baseURL = settings.baseURL
+      const resp = await fetch(`${baseURL}/models`, {
+        headers: settings.apiKey ? {
+          Authorization: `Bearer ${settings.apiKey}`
+        } : {}
+      })
+      const { data } = await resp.json()
+      return data.map(m => m.id)
+    }
+  },
+  {
+    name: 'openrouter',
+    label: 'OpenRouter',
+    avatar: { type: 'svg', name: 'openrouter' },
+    settings: Object(commonSettings),
+    initialSettings: {},
+    constructor: createOpenRouter,
+    getModelList: async (settings) => {
+      const baseURL = settings.baseURL || OfficialBaseURLs.openrouter
+      const resp = await fetch(`${baseURL}/models`, {
+        headers: {
+          Authorization: `Bearer ${settings.apiKey}`
+        }
+      })
+      const { data } = await resp.json()
+      return data.map(m => m.id)
+    }
+  },
+  {
     name: 'deepseek',
     label: 'DeepSeek',
     avatar: { type: 'svg', name: 'deepseek-c' },
@@ -165,12 +207,18 @@ const InputTypes = {
   gemini2: { user: ['image/*', 'audio/*'], assistant: [], tool: [] }
 }
 const models: Model[] = [
+  { name: 'o3-mini', inputTypes: InputTypes.textOnly },
+  { name: 'o3-mini-2025-01-31', inputTypes: InputTypes.textOnly },
   { name: 'o1-mini', inputTypes: InputTypes.textOnly },
   { name: 'o1-mini-2024-09-12', inputTypes: InputTypes.textOnly },
   { name: 'o1-preview', inputTypes: InputTypes.textOnly },
   { name: 'o1-preview-2024-09-12', inputTypes: InputTypes.textOnly },
-  { name: 'o3-mini', inputTypes: InputTypes.textOnly },
-  { name: 'o3-mini-2025-01-31', inputTypes: InputTypes.textOnly },
+  { name: 'gpt-4.1', inputTypes: InputTypes.commonVision },
+  { name: 'gpt-4.1-2025-04-14', inputTypes: InputTypes.commonVision },
+  { name: 'gpt-4.1-mini', inputTypes: InputTypes.commonVision },
+  { name: 'gpt-4.1-mini-2025-04-14', inputTypes: InputTypes.commonVision },
+  { name: 'gpt-4.1-nano', inputTypes: InputTypes.commonVision },
+  { name: 'gpt-4.1-nano-2025-04-14', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-2024-11-20', inputTypes: InputTypes.commonVision },
   { name: 'gpt-4o-2024-08-06', inputTypes: InputTypes.commonVision },
@@ -1025,7 +1073,6 @@ const codeExtensions = [
   'toc',
   'tea',
   't',
-  'txt',
   'fr',
   'nb',
   'ncl',
